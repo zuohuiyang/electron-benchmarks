@@ -1,24 +1,26 @@
 # Electron Benchmarks
 
-可复现的 Electron 性能基准测试套件，用于评估 Electron 自身的性能与版本回归。
+English | [简体中文](README.zh-CN.md)
 
-## 项目定位
+Reproducible performance benchmarks for Electron, covering startup time, memory usage, and CPU usage across versions.
 
-通过固定标准场景，测量 Electron 的启动时间、内存、CPU 等指标，帮助维护者和开发者了解不同版本的性能表现，发现性能回归并验证优化效果。
+## Purpose
 
-目前处于规划阶段。
+Electron Benchmarks aims to measure Electron's own performance through standardized scenarios. It helps maintainers and developers compare versions, detect performance regressions, and validate optimizations.
 
-## 测试模式
+The project is currently in the planning stage.
 
-- **单版本测试**：运行固定标准场景，输出该版本的测量指标、原始样本和环境信息。
-- **多版本对比**：在相同环境下，对多个 Electron 版本运行相同标准场景。支持指定基准版本，输出各版本的测量指标、相对基准的绝对差值和变化百分比。
+## Test modes
 
-## 基本结构
+- **Single-version testing**: Run standardized scenarios against one Electron version and report metrics, raw samples, and environment details.
+- **Multi-version comparison**: Run the same standardized scenarios against multiple Electron versions in the same environment. Choose a baseline version and report each version's metrics, absolute differences, and percentage changes relative to that baseline.
 
-标准场景定义测试内容，共用 Runner 负责运行场景和采集数据，Reporter 负责输出测量结果及版本对比报告。
+## Structure
 
-配置、重复测试和报告设计参考 Chromium Crossbench。
+Standardized scenarios define the workloads. A shared Runner executes scenarios and collects data. A Reporter produces measurement results and version comparison reports.
 
-## 初期范围
+Configuration, repeated runs, and reporting design draw on Chromium Crossbench.
 
-第一阶段聚焦 Electron 自身的标准性能测试，不扩展为测试任意用户应用的通用平台。具体场景、测量口径、接口和实现方案后续逐步确定。
+## Initial scope
+
+The first phase focuses on standardized performance testing of Electron itself. Testing arbitrary user applications is outside the initial scope. Scenarios, metric definitions, interfaces, and implementation details will be developed as the project takes shape.
