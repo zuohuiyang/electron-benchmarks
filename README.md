@@ -2,11 +2,13 @@
 
 English | [简体中文](README.zh-CN.md)
 
-Reproducible performance benchmarks for Electron, covering startup time, memory usage, and CPU usage across versions.
+Unofficial, reproducible performance benchmarks for Electron, covering startup time, memory usage, and CPU usage across versions.
+
+This is an independent community project and is not affiliated with or endorsed by the Electron project.
 
 ## Purpose
 
-Electron Benchmarks aims to measure Electron's own performance through standardized scenarios. It helps maintainers and developers compare versions, detect performance regressions, and validate optimizations.
+Electron Benchmarks aims to measure Electron's own performance through standardized scenarios. It helps developers compare versions, detect performance regressions, and validate optimizations.
 
 The project is currently in the planning stage.
 
