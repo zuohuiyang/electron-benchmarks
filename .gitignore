@@ -1,0 +1,9 @@
+node_modules/
+dist/
+results/
+.test-output/
+*.tgz
+native/*.exe
+native/*.obj
+native/*.pdb
+native/*.lib

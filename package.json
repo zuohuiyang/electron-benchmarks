@@ -1,0 +1,48 @@
+{
+  "name": "electron-benchmarks",
+  "version": "0.1.0",
+  "description": "Reproducible Windows Electron startup and resource benchmarks",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zuohuiyang/electron-benchmarks.git"
+  },
+  "homepage": "https://github.com/zuohuiyang/electron-benchmarks#readme",
+  "bugs": "https://github.com/zuohuiyang/electron-benchmarks/issues",
+  "type": "module",
+  "bin": {
+    "electron-bench": "bin/electron-bench.js"
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "tsc && node scripts/build-native.mjs",
+    "build:ts": "tsc",
+    "test": "npm run build:ts && node --test test/*.test.mjs",
+    "prepack": "npm run build",
+    "start": "node bin/electron-bench.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "native/windows-helper.exe",
+    "native/windows-helper.cc",
+    "harness",
+    "tools/windows/autologon.ps1",
+    "tools/windows/README.md",
+    "scripts/build-native.mjs",
+    "scripts/extract.ps1",
+    "THIRD_PARTY_NOTICES.md",
+    "docs",
+    "doc",
+    "examples",
+    "Todo.md"
+  ],
+  "dependencies": {
+    "@electron/get": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3"
+  }
+}

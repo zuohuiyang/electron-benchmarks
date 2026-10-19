@@ -1,0 +1,7 @@
+{
+  "test": "startup",
+  "electrons": ["40.0.0", "41.0.0"],
+  "scenario": "warm",
+  "repeat": 20,
+  "out": "../results/startup-comparison"
+}
