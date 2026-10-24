@@ -1,18 +1,31 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { atomicJson, readJson } from './files.js';
-import type { Run, Sample } from './model.js';
+import type { Phase, Run, Sample, Target } from './model.js';
 import { quantile, difference } from './statistics.js';
 import { PRESET } from './model.js';
-export const escapeHtml = (s: unknown): string => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+import { renderReportHtml } from './report-html.js';
+export { escapeHtml } from './report-html.js';
+
+export interface SummaryMetric { p50: number; p90: number; difference?: ReturnType<typeof difference> }
+export interface GroupSummary { target: string; phase: Phase; valid: number; failed: number; metrics: Record<string, SummaryMetric> }
+export interface ReportSummary {
+  schemaVersion: 1; toolVersion: string; sceneVersion: string; layoutVersion: string; status: Run['status'];
+  completed: number; planned: number; valid: number; failed: number; unexecuted: number;
+  error?: string; cleanupError?: string; config: Run['config']; targets: Omit<Target, 'manifest'>[];
+  environment: Run['environment']; groups: GroupSummary[]; presets: typeof PRESET; notes: string[];
+  statistics: { primary: 'p50'; secondary: 'p90'; comparison: 'p50'; warmupsExcluded: true };
+  links: { label: string; href: string }[];
+}
 export function summarize(run: Run, samples: Sample[]) {
-  const groups: Record<string, { target: string; phase: string; valid: number; failed: number; metrics: Record<string, { p50: number; p90: number; difference?: ReturnType<typeof difference> }> }> = {};
+  const groups: Record<string, GroupSummary> = {};
   for (const step of run.steps.filter(s => !s.warmup)) {
     const key = `${step.phase}/${run.targets[step.target].id}`;
     groups[key] ??= { target: run.targets[step.target].id, phase: step.phase, valid: 0, failed: 0, metrics: {} };
   }
   for (const sample of samples.filter(s => !s.step.warmup)) {
     const group = groups[`${sample.step.phase}/${sample.targetId}`];
+    if (!group) throw Error(`Sample is outside the test plan: ${sample.targetId}/${sample.step.phase}`);
     if (sample.valid) group.valid++; else group.failed++;
   }
   for (const group of Object.values(groups)) {
@@ -20,6 +33,7 @@ export function summarize(run: Run, samples: Sample[]) {
     const keys = new Set(records.flatMap(s => Object.keys(s.metrics)));
     for (const key of keys) {
       const values = records.map(s => s.metrics[key]).filter(Number.isFinite);
+      if (values.length !== records.length) continue; // An incomplete metric must not masquerade as a full group.
       group.metrics[key] = { p50: quantile(values, .5), p90: quantile(values, .9) };
     }
   }
@@ -35,16 +49,22 @@ export function report(run: Run): string {
   const samples = fs.existsSync(dir) ? fs.readdirSync(dir).filter(s => s.endsWith('.json')).sort().map(s => readJson<Sample>(path.join(dir, s))) : [];
   const groups = summarize(run, samples);
   const formal = samples.filter(s => !s.step.warmup);
-  const summary = { schemaVersion: 1, toolVersion: run.toolVersion, sceneVersion: 'windows-v1', status: run.status,
+  const notes = ['主视图与版本差值统一使用有效正式样本的 P50（中位数），P90 放在详细指标中。基准为零时，变化百分比不可计算。'];
+  if (run.steps.some(s => s.phase === 'warm' || s.phase === 'cold')) notes.push('启动就绪表示 Electron 初始化完成，不代表页面可交互；首次可见视频回调不等于物理屏幕输出。计时起点为父进程发起启动前。');
+  if (run.steps.some(s => s.phase === 'memory')) notes.push('私有提交量不是私有驻留物理内存。工作集求和可能重复计算共享页；观察期采样峰值不是进程生命周期峰值。');
+  if (run.steps.some(s => s.phase === 'cpu')) notes.push('CPU 使用原生累计进程时间差，按实际时长与整机逻辑核容量归一化；空闲消耗很小时，计数器可能量化为零。');
+  if (run.steps.some(s => s.phase === 'cold')) notes.push('重启后的首次启动不表示所有缓存或预取历史都已清空。虚拟机来宾重启数据不能证明实体机冷启动表现。');
+  const valid = formal.filter(s => s.valid).length, failed = formal.length - valid;
+  const summary: ReportSummary = { schemaVersion: 1, toolVersion: run.toolVersion, sceneVersion: 'windows-v1', layoutVersion: 'zh-comparison-v1', status: run.status,
     completed: formal.length, planned: run.steps.filter(s => !s.warmup).length,
+    valid, failed, unexecuted: Math.max(0, run.steps.filter(s => !s.warmup).length - formal.length),
     error: run.error, cleanupError: run.cleanupError, config: run.config, targets: run.targets.map(({ manifest: _m, ...target }) => target),
     environment: run.environment, groups, presets: PRESET,
-    notes: ['Lower is better for these metrics; differences use unrounded P50 values.', 'Working-set sums can double-count shared pages; private bytes are committed private memory, not private resident RAM.', 'CPU uses native cumulative GetProcessTimes deltas divided by actual wall duration and logical processors. Small idle values can quantize to zero.', 'Sampled memory peak is not the lifetime peak.', 'Post-reboot does not mean all caches or prefetch history were cleared.', 'Hypervisor presence is recorded; guest results do not establish physical-machine cold performance.'] };
+    statistics: { primary: 'p50', secondary: 'p90', comparison: 'p50', warmupsExcluded: true }, notes,
+    links: [{ label: '汇总 JSON', href: 'summary.json' }, ...[['plan.json', '测试计划'], ['run.json', '运行记录']].filter(([file]) => fs.existsSync(path.join(run.root, file))).map(([href, label]) => ({ label, href }))] };
   atomicJson(path.join(run.root, 'summary.json'), summary);
   const format = (n: number | null | undefined) => n == null ? 'n/a' : n.toFixed(3);
-  const rows = groups.flatMap(g => Object.entries(g.metrics).map(([name, m]) => `<tr><td>${escapeHtml(g.phase)}</td><td>${escapeHtml(g.target)}</td><td>${escapeHtml(name)}</td><td>${g.valid}/${g.failed}</td><td>${format(m.p50)}</td><td>${format(m.p90)}</td><td>${format(m.difference?.absolute)}</td><td>${format(m.difference?.percent)}</td></tr>`)).join('');
-  const samplesHtml = samples.map(s => `<tr><td>${escapeHtml(s.step.id)}</td><td>${escapeHtml(s.step.phase)}</td><td>${escapeHtml(s.targetId)}</td><td>${s.step.warmup ? 'warmup' : 'formal'}</td><td>${s.valid ? 'valid' : escapeHtml(s.error)}</td><td><a href="samples/${s.step.id}.json">raw JSON</a></td><td>${escapeHtml(JSON.stringify(s.metrics))}</td></tr>`).join('');
-  const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>Electron Benchmarks</title><style>body{font:15px system-ui;max-width:1400px;margin:32px auto;padding:0 20px;color:#172033}table{border-collapse:collapse;width:100%;margin:20px 0}th,td{padding:9px;border:1px solid #ccd3dd;text-align:left}th{background:#edf2f8}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f2f5f8;padding:16px}a{color:#235cc8}h2{margin-top:36px}</style><h1>Electron Benchmarks</h1><p>Status: ${escapeHtml(run.status)} · ${summary.completed}/${summary.planned} formal records · baseline: ${escapeHtml(run.targets[0]?.id)}</p><p>${escapeHtml(run.error ?? '')} ${escapeHtml(run.cleanupError ?? '')}</p><h2>Version comparison</h2><table><tr><th>Test</th><th>Target</th><th>Metric (unit in name)</th><th>Valid/failed</th><th>P50</th><th>P90</th><th>Δ P50</th><th>Δ %</th></tr>${rows}</table><ul>${summary.notes.map(n => `<li>${escapeHtml(n)}</li>`).join('')}</ul><h2>Targets and environment</h2><pre>${escapeHtml(JSON.stringify({ targets: summary.targets, environment: run.environment, config: run.config }, null, 2))}</pre><h2>Every run, in execution order</h2><table><tr><th>ID</th><th>Test</th><th>Target</th><th>Kind</th><th>Status</th><th>Evidence</th><th>Metrics</th></tr>${samplesHtml}</table><p><a href="summary.json">Structured summary</a> · <a href="run.json">Frozen plan and state</a></p></html>`;
+  const html = renderReportHtml(run, samples, summary);
   fs.writeFileSync(path.join(run.root, 'report.html'), html);
   const lines = [`${run.status}: ${summary.completed}/${summary.planned} formal records`];
   if (run.error) lines.push(run.error);

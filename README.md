@@ -56,6 +56,8 @@ Config fields are `test`, `electrons`, optional `scenario`, `repeat`, and `out`;
 
 Results include `report.html`, `summary.json`, the frozen `plan.json`, task state in `run.json`, per-run JSON samples and environment logs. Failed and warmup samples are retained and excluded from formal quantiles. P50/P90 use linear interpolation. Do not compare different timing origins, scenario versions or hardware as equivalent experiments.
 
+The HTML report is in Chinese. Single-version results use metric cards; multi-version results place versions in columns and metrics in rows. All primary values and version differences use P50. P90, individual runs, and environment details are expandable. Failed, unmeasured, and missing metrics remain distinct from measured zero.
+
 Startup measures parent-before-spawn to APP READY and the first observed visible video callback, using the [reused QPC/FILETIME clock bridge](THIRD_PARTY_NOTICES.md). The latter is not physical screen presentation. Resource tests use a static page, wait 10 seconds, then observe for 20 seconds at 1-second intervals. Private bytes measure private committed memory; working-set sums may double-count shared pages. CPU uses Windows cumulative process-time deltas, normalized over all logical processors; Electron's raw percentage counters are retained but are not the formal CPU metric. Hypervisor presence is reported and does not establish physical-machine cold performance.
 
 ## Development
