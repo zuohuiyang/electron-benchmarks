@@ -5,7 +5,7 @@ import path from 'node:path';
 import { parseArgs, plan } from '../dist/config.js';
 import { quantile, difference, resources, nativeCpu } from '../dist/statistics.js';
 import { resumeAllowed, assertFrozenPlan, copyDependencies } from '../dist/runner.js';
-import { summarize, escapeHtml } from '../dist/report.js';
+import { summarize } from '../dist/report.js';
 import { manifest, verifyManifest, atomicJson, writeNewJson, sha256 } from '../dist/files.js';
 import { startupCommand, systemCpu, assertPriority } from '../dist/windows.js';
 import { stderrHasFailure } from '../dist/launch.js';
@@ -57,13 +57,12 @@ test('resources use KiB, distinguish shared working set, and integrate machine-n
   assert.equal(result.cpuPercentMachine, 25); assert.equal(result.cpuTimeSeconds, 2);
   assert.throws(() => resources([{ intervalMs: 1000, processes: [processRow()] }, { intervalMs: 1000, processes: [processRow(2)] }], 4));
 });
-test('report excludes failed and warmup values, retains their counts, escapes untrusted text', () => {
+test('summary excludes failed and warmup values and retains their counts', () => {
   const run = { targets: [{ id: 'a' }, { id: 'b' }], steps: [{ phase: 'warm', target: 0 }, { phase: 'warm', target: 1 }] };
   const sample = (id, value, valid, warmup = false) => ({ targetId: id, step: { phase: 'warm', warmup }, valid, metrics: { appReadyMs: value } });
   const groups = summarize(run, [sample('a', 10, true), sample('b', 8, true), sample('b', 0, false), sample('a', 999, true, true)]);
   assert.equal(groups[1].failed, 1); assert.equal(groups[0].metrics.appReadyMs.p50, 10);
   assert.equal(groups[1].metrics.appReadyMs.difference.percent, -20);
-  assert.equal(escapeHtml('<script>"&'), '&lt;script&gt;&quot;&amp;');
 });
 test('frozen manifests detect content changes and unlisted files; sample writes never overwrite', () => {
   const dir = fs.mkdtempSync(path.resolve('.test-output/frozen-'));

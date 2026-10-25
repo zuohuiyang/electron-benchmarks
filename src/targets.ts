@@ -33,7 +33,7 @@ export async function resolveTarget(input: string, index: number, runRoot: strin
     executable = path.join(cache, 'electron.exe');
     // A completion marker prevents an interrupted unzip from being used as a target.
     if (!fs.existsSync(path.join(cache, '.complete'))) {
-      console.log(`Preparing Electron ${input}...`);
+      console.error(`Preparing Electron ${input}...`);
       const zip = await downloadArtifact({ version: input, artifactName: 'electron', platform: 'win32', arch: 'x64' });
       const staging = `${cache}.${randomUUID()}.partial`;
       fs.mkdirSync(staging, { recursive: true });

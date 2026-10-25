@@ -1,7 +1,7 @@
 {
   "name": "electron-benchmarks",
   "version": "0.1.0",
-  "description": "Reproducible Windows Electron startup and resource benchmarks",
+  "description": "Electron benchmarks for AI agents: reproducible Windows measurements and structured results",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/zuohuiyang/electron-benchmarks.git"

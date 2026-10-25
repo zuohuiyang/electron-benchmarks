@@ -2,39 +2,41 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { report } from '../dist/report.js';
+import { spawnSync } from 'node:child_process';
+import { report, resultExitCode, terminalSummary } from '../dist/report.js';
 import { reportFixture } from './report-fixture.mjs';
 
-function render(fixture) {
-  fixture.save(); report(fixture.run);
-  const html = fs.readFileSync(path.join(fixture.root, 'report.html'), 'utf8');
-  return { html, main: html.split('<section class="details-stack"')[0],
-    summary: JSON.parse(fs.readFileSync(path.join(fixture.root, 'summary.json'), 'utf8')) };
+function emit(fixture) {
+  fixture.save();
+  const result = report(fixture.run);
+  assert.deepEqual(result, JSON.parse(fs.readFileSync(result.artifacts.summary, 'utf8')));
+  assert.equal(fs.existsSync(path.join(fixture.root, 'report.html')), false);
+  for (const file of Object.values(result.artifacts).filter(Boolean)) assert(fs.existsSync(file), file);
+  return result;
 }
 
-for (const [kind, targets, metrics] of [['startup', 1, 2], ['startup', 3, 6], ['all', 1, 9], ['all', 3, 27]]) {
-  test(`Chinese ${kind}/${targets} report uses P50 consistently and keeps original records`, () => {
-    const fixture = reportFixture(kind, targets), { html, main, summary } = render(fixture);
-    assert.match(html, /lang="zh-CN"/);
-    assert.match(main, new RegExp(`data-layout="${targets === 1 ? 'single' : 'comparison'}"`));
-    assert.match(main, /统计口径：<strong>P50（中位数）<\/strong>/);
-    const primary = [...main.matchAll(/data-statistic="([^"]+)" data-value="([^"]+)"/g)];
-    assert.equal(primary.length, metrics);
-    assert(primary.every(([, statistic, value]) => statistic === 'p50' && Number(value) < 900));
-    assert.doesNotMatch(main, /data-statistic="p90"|<div class="single-p90">/);
-    assert.match(html.slice(main.length), /data-statistic="p90"/);
-    assert.equal(summary.statistics.primary, 'p50'); assert.equal(summary.statistics.comparison, 'p50');
-    assert.equal(summary.valid, targets * 3 * (kind === 'all' ? 4 : 1));
-    assert.equal(summary.unexecuted, 0);
-    assert.doesNotMatch(html, /<script\b|演示数据|中文静态样稿|prototype-nav"/);
-    const links = [...html.matchAll(/href="([^"]+)"/g)].map(m => m[1]);
-    for (const href of links) assert(fs.existsSync(path.join(fixture.root, decodeURIComponent(href))), href);
-    assert.equal(links.filter(link => link.startsWith('samples/')).length, fixture.samples.length);
-    if (kind === 'all') {
-      const phaseOrder = [...main.matchAll(/(?:tbody|section)[^>]*data-phase="([^"]+)"/g)].map(m => m[1]);
-      assert.deepEqual(phaseOrder, ['cold', 'warm', 'memory', 'cpu']);
-      assert.match(html, /主视图仍对这些每轮结果取 P50/);
+for (const [kind, targets] of [['startup', 1], ['startup', 3], ['all', 1], ['all', 3]]) {
+  test(`${kind}/${targets} emits complete machine-readable results without HTML`, () => {
+    const fixture = reportFixture(kind, targets), result = emit(fixture);
+    assert.equal(result.schemaVersion, 2); assert.equal(result.kind, 'result');
+    assert.equal(result.dataComplete, true); assert.equal(resultExitCode(result), 0);
+    assert.equal(result.baselineTarget, 'target-1'); assert.equal(result.targets.length, targets);
+    assert.equal(result.statistics.primary, 'p50'); assert.equal(result.statistics.comparison, 'p50');
+    assert.equal(result.valid, targets * 3 * (kind === 'all' ? 4 : 1));
+    assert.equal(result.unexecuted, 0); assert.equal(result.error, null);
+    assert.equal(result.environment, undefined); assert.equal(result.layoutVersion, undefined);
+    assert.equal(result.links, undefined);
+    assert.equal(JSON.parse(fs.readFileSync(result.artifacts.environment)).os, fixture.run.environment.os);
+    for (const group of result.groups) {
+      assert.equal(group.planned, 3); assert.equal(group.valid, 3); assert.deepEqual(group.missingMetrics, []);
+      for (const [key, metric] of Object.entries(group.metrics)) {
+        assert(metric.p50 < 900, 'warmups excluded'); assert(metric.p90 >= metric.p50);
+        assert(result.metricDefinitions[key].unit); assert(result.metricDefinitions[key].description);
+      }
     }
+    if (kind === 'all') assert.deepEqual([...new Set(result.groups.map(g => g.phase))], ['cold', 'warm', 'memory', 'cpu']);
+    assert.equal(fs.readdirSync(result.artifacts.samples).length, fixture.samples.length);
+    assert.match(terminalSummary(result), /P50=/); assert.doesNotMatch(terminalSummary(result), /\.html/);
   });
 }
 
@@ -43,66 +45,98 @@ test('comparison computes unrounded P50 differences rather than P90 differences'
   for (const sample of fixture.samples.filter(s => !s.step.warmup)) {
     sample.metrics.appReadyMs = (sample.step.target === 0 ? [10, 20, 30] : [12, 21, 100])[sample.step.round];
   }
-  const { main, summary } = render(fixture);
-  assert.equal(summary.groups[1].metrics.appReadyMs.difference.percent, 5);
-  assert.match(main, /↑ 5\.00%/);
-  assert.match(main, /data-value="21"/);
-  assert.doesNotMatch(main, /data-value="84\.2"/);
+  const result = emit(fixture), metric = result.groups[1].metrics.appReadyMs;
+  assert.equal(metric.difference.percent, 5); assert.equal(metric.difference.absolute, 1);
+  assert.equal(metric.p50, 21); assert.equal(metric.p90, 84.2);
 });
 
-test('failed, unexecuted and missing values stay distinct from measured zero', () => {
+test('failed and unexecuted samples are explicit and never appear as zero', () => {
   const fixture = reportFixture('all', 1);
   const cold = fixture.samples.find(s => s.step.phase === 'cold');
   cold.valid = false; cold.error = 'Clock failed'; cold.metrics = {};
   fixture.samples.splice(0, fixture.samples.length, cold);
   fixture.run.status = 'failed'; fixture.run.error = 'Clock failed';
-  const { main, summary, html } = render(fixture);
-  assert.equal(summary.valid, 0); assert.equal(summary.failed, 1); assert.equal(summary.unexecuted, 11);
-  assert.match(main, /无有效样本/); assert.match(main, /未测量/);
-  assert.doesNotMatch(main, /data-value="0"|已完成/);
-  assert.match(html, /Clock failed/);
-  assert(fs.existsSync(path.join(fixture.root, 'samples', cold.step.id + '.json')));
+  const result = emit(fixture);
+  assert.equal(result.valid, 0); assert.equal(result.failed, 1); assert.equal(result.unexecuted, 11);
+  assert.equal(result.dataComplete, false); assert.equal(resultExitCode(result), 1);
+  assert.equal(result.error.message, 'Clock failed');
+  assert(result.groups.every(g => !Object.keys(g.metrics).length));
+  assert(result.warnings.some(w => w.code === 'INCOMPLETE_DATA'));
 });
 
-test('zero baselines remain valid but never produce a fabricated percentage', () => {
+test('zero baselines are valid; percentage is explicitly null', () => {
   const fixture = reportFixture('cpu', 2);
   for (const sample of fixture.samples) sample.metrics = sample.step.target === 0 ? { cpuPercentMachine: 0, cpuTimeSeconds: 0 } : { cpuPercentMachine: .05, cpuTimeSeconds: .32 };
-  const { main, summary } = render(fixture);
-  assert.equal(summary.groups[1].metrics.cpuPercentMachine.difference.percent, null);
-  assert.match(main, /百分比不可计算/);
-  assert.match(main, /data-value="0"/);
-  assert.doesNotMatch(main, /Infinity|NaN/);
+  const result = emit(fixture);
+  assert.equal(result.dataComplete, true);
+  assert.equal(result.groups[0].metrics.cpuPercentMachine.p50, 0);
+  assert.deepEqual(result.groups[1].metrics.cpuPercentMachine.difference, { absolute: .05, percent: null });
 });
 
-test('missing metrics do not aggregate a smaller subset as if every run supplied them', () => {
+test('missing metrics cannot aggregate a smaller subset or produce success', () => {
   const fixture = reportFixture('memory', 1);
   delete fixture.samples.find(s => !s.step.warmup).metrics.privateBytesSumMiB;
-  const { main, summary } = render(fixture);
-  assert.equal(summary.groups[0].metrics.privateBytesSumMiB, undefined);
-  assert.match(main, /数据不完整/);
-  assert.match(main, /指标未返回/);
-  assert.doesNotMatch(main, /data-metric="privateBytesSumMiB"/);
+  const result = emit(fixture);
+  assert.equal(result.groups[0].metrics.privateBytesSumMiB, undefined);
+  assert.deepEqual(result.groups[0].missingMetrics, ['privateBytesSumMiB']);
+  assert.equal(result.status, 'complete'); assert.equal(result.dataComplete, false);
+  assert.equal(resultExitCode(result), 1);
 });
 
-test('reports escape target, environment and error text, and support five target columns', () => {
-  const fixture = reportFixture('startup', 5);
-  const payload = '<img src=x onerror="alert(1)">';
-  fixture.run.targets[0].version = payload;
-  fixture.run.environment.os = payload;
-  fixture.run.error = payload;
-  fixture.samples[0].valid = false; fixture.samples[0].error = payload; fixture.samples[0].metrics = {};
-  const { html, main } = render(fixture);
-  assert.doesNotMatch(html, /<img\b|<script\b/);
-  assert.match(html, /&lt;img/);
-  assert.equal((main.match(/class="version-line"/g) ?? []).length, 5);
-  assert.match(html, /本地构建 1/); assert.match(html, /本地构建 2/);
-});
-
-test('a complete flag cannot hide missing formal samples', () => {
-  const fixture = reportFixture('startup', 1);
+test('a complete flag cannot hide missing samples; one sample yields a structured warning', () => {
+  const fixture = reportFixture('startup', 1, 2);
   fixture.samples.splice(fixture.samples.findIndex(s => !s.step.warmup), 1);
-  const { main, summary } = render(fixture);
-  assert.equal(summary.unexecuted, 1);
-  assert.match(main, /数据不完整/);
-  assert.doesNotMatch(main, /已完成/);
+  const result = emit(fixture);
+  assert.equal(result.unexecuted, 1); assert.equal(result.groups[0].unexecuted, 1);
+  assert.equal(result.dataComplete, false); assert.equal(resultExitCode(result), 1);
+  assert(result.warnings.some(w => w.code === 'SINGLE_SAMPLE' && w.target === 'target-1' && w.phase === 'warm'));
+});
+
+test('sample identity and duplicate files cannot inflate sample counts', () => {
+  const fixture = reportFixture('startup', 1);
+  fs.writeFileSync(path.join(fixture.root, 'samples', 'duplicate.json'), JSON.stringify(fixture.samples[0]));
+  assert.throws(() => report(fixture.run), /duplicated/);
+  fixture.save(); fixture.samples[0].targetId = 'wrong-target'; fixture.save();
+  assert.throws(() => report(fixture.run), /test plan/);
+});
+
+test('user-declined consent is interrupted, cleanup failures are not success', () => {
+  const fixture = reportFixture('startup', 1);
+  fixture.samples.length = 0; fixture.run.status = 'interrupted';
+  fixture.run.failure = { code: 'INTERRUPTED', stage: 'consent', message: 'User declined reboot sequence' };
+  const result = emit(fixture);
+  assert.equal(resultExitCode(result), 130); assert.equal(result.error.stage, 'consent');
+  fixture.run.cleanupError = 'Remove only this task startup entry';
+  const failedCleanup = emit(fixture);
+  assert.equal(resultExitCode(failedCleanup), 1); assert.equal(failedCleanup.cleanupError.code, 'CLEANUP_FAILED');
+});
+
+test('CLI invalid input produces one parseable JSON document and separate stderr', () => {
+  const child = spawnSync(process.execPath, ['bin/electron-bench.js', 'startup', '--electron', '40.0.0', '--repeat', '0'], { encoding: 'utf8' });
+  assert.equal(child.status, 2); const result = JSON.parse(child.stdout);
+  assert.equal(result.schemaVersion, 2); assert.equal(result.kind, 'error');
+  assert.equal(result.error.code, 'INVALID_INPUT'); assert.equal(result.error.stage, 'input');
+  assert.match(child.stderr, /INVALID_INPUT/); assert.doesNotMatch(child.stdout, /Preflight|Summary:/);
+});
+
+test('noninteractive cold call fails before output creation or environment inspection', { skip: process.platform !== 'win32' }, () => {
+  // No --out: cold defaults outside the source tree, and must fail before creating it.
+  const child = spawnSync(process.execPath, ['bin/electron-bench.js', 'all', '--electron', '40.0.0'], { encoding: 'utf8' });
+  assert.equal(child.status, 1); const result = JSON.parse(child.stdout);
+  assert.equal(result.error.code, 'REBOOT_CONSENT_REQUIRED');
+  assert.doesNotMatch(child.stderr, /Preflight|Reboot in|Preparing Electron/);
+});
+
+test('consumer example reads metrics with units and preserves sample warnings', () => {
+  const fixture = reportFixture('startup', 2, 1), result = emit(fixture);
+  const child = spawnSync(process.execPath, ['examples/read-results.mjs', result.artifacts.summary], { encoding: 'utf8' });
+  assert.equal(child.status, 0);
+  const consumed = JSON.parse(child.stdout);
+  assert.equal(consumed.rows.length, 2); assert.equal(consumed.rows[0].unit, 'ms');
+  assert.equal(consumed.rows[0].p50, result.groups[0].metrics.appReadyMs.p50);
+  assert.equal(consumed.rows[1].difference.percent, result.groups[1].metrics.appReadyMs.difference.percent);
+  assert(consumed.warnings.some(w => w.code === 'SINGLE_SAMPLE'));
+  fixture.run.status = 'failed'; emit(fixture);
+  const rejected = spawnSync(process.execPath, ['examples/read-results.mjs', result.artifacts.summary], { encoding: 'utf8' });
+  assert.equal(rejected.status, 1); assert.equal(rejected.stdout, '');
 });

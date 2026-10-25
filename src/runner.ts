@@ -9,6 +9,7 @@ import { TOOL_ROOT, localRoot, inspect, environment, assertDesktop, startup, sta
 import { resolveTarget, verifyTarget } from './targets.js';
 import { launch } from './launch.js';
 import { report } from './report.js';
+import { BenchmarkError, failure } from './errors.js';
 
 const activePath = (): string => path.join(localRoot(), 'active.json');
 const save = (run: Run) => atomicJson(path.join(run.root, 'run.json'), run);
@@ -78,7 +79,7 @@ async function claim(root: string): Promise<void> {
     const old = readJson<Active>(activePath());
     let alive = false;
     try { alive = inspect(old.pid).creationFileTime100ns === old.creation; } catch { /* Previous process is gone. */ }
-    if (alive) throw Error(`Another benchmark is running: ${old.root}`);
+    if (alive) throw new BenchmarkError('RUN_BUSY', 'prepare', `Another benchmark is running: ${old.root}`);
     const stateFile = path.join(old.root, 'run.json');
     if (fs.existsSync(stateFile)) {
       const previous = readJson<Run>(stateFile);
@@ -92,17 +93,20 @@ async function claim(root: string): Promise<void> {
   writeNewJson(activePath(), { root, pid: process.pid, creation: info.creationFileTime100ns });
 }
 async function consent(message: string): Promise<boolean> {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) throw Error('Cold/all requires an interactive terminal for reboot consent.');
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  if (!process.stdin.isTTY || !process.stderr.isTTY) throw new BenchmarkError('REBOOT_CONSENT_REQUIRED', 'consent', 'Cold/all requires an interactive terminal for reboot consent.');
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
   try { return /^(y|yes)$/i.test((await rl.question(message)).trim()); } finally { rl.close(); }
 }
 export async function prepare(config: Config, check: () => void): Promise<Run> {
   const cold = config.test === 'all' || config.scenario === 'cold';
   const root = path.resolve(config.out ?? path.join(localRoot(), 'runs', `${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID().slice(0, 8)}`));
-  if (fs.existsSync(root)) throw Error(`Output already exists: ${root}`);
-  if (cold && isWithin(root, TOOL_ROOT)) throw Error('For cold/all, use a persistent output outside the installed tool/source directory.');
-  const env = await environment(); check();
-  const native = inspect(); assertDesktop(native);
+  if (fs.existsSync(root)) throw new BenchmarkError('OUTPUT_EXISTS', 'input', `Output already exists: ${root}`);
+  if (cold && isWithin(root, TOOL_ROOT)) throw new BenchmarkError('INVALID_OUTPUT', 'input', 'For cold/all, use a persistent output outside the installed tool/source directory.');
+  // Check consent availability before downloads, preflight launches or persistent snapshots.
+  if (cold && (!process.stdin.isTTY || !process.stderr.isTTY)) throw new BenchmarkError('REBOOT_CONSENT_REQUIRED', 'consent', 'Cold/all requires an interactive terminal for reboot consent.');
+  let env: Record<string, unknown>, native;
+  try { env = await environment(); check(); native = inspect(); assertDesktop(native); }
+  catch (error) { const f = failure(error, 'ENVIRONMENT_NOT_READY', 'environment'); throw new BenchmarkError(f.code, f.stage, f.message); }
   await claim(root);
   let run: Run | undefined;
   try {
@@ -122,11 +126,11 @@ export async function prepare(config: Config, check: () => void): Promise<Run> {
       run.toolManifest = ['dist', 'harness', 'native'].flatMap(dir => manifest(path.join(TOOL_ROOT, dir)).map(entry => ({ ...entry, path: `${dir}/${entry.path}` })));
     }
     for (const target of targets) {
-      check(); console.log(`Preflight ${target.id}: ${target.executable}`);
+      check(); console.error(`Preflight ${target.id}: ${target.executable}`);
       fs.mkdirSync(target.profileTemplate);
       const sample = await launch(target, { id: `preflight-${target.id}`, phase: 'warm', target: targets.indexOf(target), round: 0, warmup: true }, target.profileTemplate, check, run.toolRoot);
       writeNewJson(path.join(root, `${sample.step.id}.json`), sample);
-      if (!sample.valid) throw Error(`Preflight failed: ${sample.error}`);
+      if (!sample.valid) { check(); throw new BenchmarkError('PREFLIGHT_FAILED', 'prepare', `Preflight failed: ${sample.error}`); }
       const events = sample.raw.events as Record<string, any>[];
       const versions = events.find(e => e.event === 'diagnostics')?.versions;
       if (!versions?.electron || Number(versions.electron.split('.')[0]) < 22) throw Error('Target must be Electron >=22');
@@ -138,18 +142,20 @@ export async function prepare(config: Config, check: () => void): Promise<Run> {
     writeNewJson(path.join(root, 'plan.json'), frozenPlan(run));
     run.planSha256 = sha256(path.join(root, 'plan.json'));
     save(run);
-    console.log(`Baseline: ${targets[0].id}\nTargets: ${targets.map(t => `${t.id}=${t.version}`).join(', ')}\nFormal runs: ${run.steps.filter(s => !s.warmup).length}\nOutput: ${root}`);
+    console.error(`Baseline: ${targets[0].id}\nTargets: ${targets.map(t => `${t.id}=${t.version}`).join(', ')}\nFormal runs: ${run.steps.filter(s => !s.warmup).length}\nOutput: ${root}`);
     for (const phase of [...new Set(run.steps.map(step => step.phase))]) {
       const steps = run.steps.filter(step => step.phase === phase);
-      console.log(`${phase}: ${steps.filter(step => !step.warmup).length / targets.length} formal runs and ${steps.filter(step => step.warmup).length / targets.length} warmups per target`);
+      console.error(`${phase}: ${steps.filter(step => !step.warmup).length / targets.length} formal runs and ${steps.filter(step => step.warmup).length / targets.length} warmups per target`);
     }
-    if (run.steps.some(step => step.phase === 'memory' || step.phase === 'cpu')) console.log(`Resources: settle ${PRESET.settleMs / 1000}s, observe ${PRESET.observeMs / 1000}s, sample every ${PRESET.sampleMs / 1000}s`);
+    if (run.steps.some(step => step.phase === 'memory' || step.phase === 'cpu')) console.error(`Resources: settle ${PRESET.settleMs / 1000}s, observe ${PRESET.observeMs / 1000}s, sample every ${PRESET.sampleMs / 1000}s`);
     if (cold) {
       const autologon = env.autologon as Record<string, unknown>;
-      if (autologon.configured !== true) console.log('Automatic login is not verified. Sign in after every reboot, or configure it separately with tools/windows/autologon.ps1 enable -AutologonPath <official tool path>.');
-      console.log(`Cold samples: ${run.steps.filter(s => s.phase === 'cold').length} independent reboot cycles. Tool and Node pinned in ${run.toolRoot}. A temporary HKCU Run entry will be installed; no scheduled tasks. Ctrl+C / STOP file cancels.`);
+      if (autologon.configured !== true) console.error('Automatic login is not verified. Sign in after every reboot, or configure it separately with tools/windows/autologon.ps1 enable -AutologonPath <official tool path>.');
+      console.error(`Cold samples: ${run.steps.filter(s => s.phase === 'cold').length} independent reboot cycles. Tool and Node pinned in ${run.toolRoot}. A temporary HKCU Run entry will be installed; no scheduled tasks. Ctrl+C / STOP file cancels.`);
       if (!await consent('Start this test and its reboot sequence? [y/N] ')) {
-        run.status = 'interrupted'; run.error = 'User declined reboot sequence'; save(run); console.log(report(run)); clearActive(run); return run;
+        run.status = 'interrupted'; run.error = 'User declined reboot sequence';
+        run.failure = { code: 'INTERRUPTED', stage: 'consent', message: run.error };
+        save(run); clearActive(run); return run;
       }
       check();
       run.startupCommand = startupCommand(run.nodePath, path.join(run.toolRoot, 'bin/electron-bench.js'), run.root);
@@ -157,7 +163,11 @@ export async function prepare(config: Config, check: () => void): Promise<Run> {
     }
     return run;
   } catch (error) {
-    if (run) { run.status = 'failed'; run.error = String(error); await clearRegistration(run); save(run); console.error(report(run)); clearActive(run); }
+    if (run) {
+      run.failure = failure(error, 'PREPARATION_FAILED', 'prepare');
+      run.status = run.failure.code === 'INTERRUPTED' ? 'interrupted' : 'failed'; run.error = run.failure.message;
+      await clearRegistration(run); save(run); clearActive(run); return run;
+    }
     else if (fs.existsSync(activePath()) && readJson<Active>(activePath()).root === root) fs.unlinkSync(activePath());
     throw error;
   }
@@ -172,17 +182,17 @@ async function restartNext(run: Run, check: () => void): Promise<never> {
   check(); const info = inspect(); assertDesktop(info);
   const max = run.steps.filter(s => s.phase === 'cold').length;
   if (run.restartCount >= max) throw Error('Reboot budget exhausted');
-  console.log(`Reboot in 15 seconds (${run.restartCount + 1}/${max}); Ctrl+C or ${path.join(run.root, 'STOP')} stops it.`);
+  console.error(`Reboot in 15 seconds (${run.restartCount + 1}/${max}); Ctrl+C or ${path.join(run.root, 'STOP')} stops it.`);
   await sleep(PRESET.restartCountdownMs, check);
-  run.restartCount++; run.lastBoot = info.bootId; run.status = 'waiting-reboot'; save(run);
+  run.restartCount++; run.lastBoot = info.bootId; run.status = 'waiting-reboot'; save(run); report(run);
   await reboot();
   await sleep(60_000, check);
   throw Error('Windows did not restart; automatic retries disabled.');
 }
 export async function execute(run: Run, userCheck: () => void, continuing = false): Promise<void> {
-  const check = () => { userCheck(); if (fs.existsSync(path.join(run.root, 'STOP'))) throw Error('STOP requested'); };
-  const info = inspect();
+  const check = () => { userCheck(); if (fs.existsSync(path.join(run.root, 'STOP'))) throw new BenchmarkError('INTERRUPTED', 'measurement', 'STOP requested'); };
   try {
+    const info = inspect();
     if (run.schemaVersion !== 1 || run.userSid !== info.userSid) throw Error('Run identity is incompatible');
     assertDesktop(info);
     assertFrozenPlan(run);
@@ -204,7 +214,7 @@ export async function execute(run: Run, userCheck: () => void, continuing = fals
       const target = run.targets[step.target];
       const profile = path.join(run.root, 'profiles', step.id);
       fs.cpSync(target.profileTemplate, profile, { recursive: true, force: false, errorOnExist: true });
-      console.log(`[${run.next + 1}/${run.steps.length}] ${step.phase} ${target.id} ${step.warmup ? 'warmup' : 'formal'}: waiting for idle`);
+      console.error(`[${run.next + 1}/${run.steps.length}] ${step.phase} ${target.id} ${step.warmup ? 'warmup' : 'formal'}: waiting for idle`);
       const idle = await waitIdle(path.join(run.root, `${step.id}-environment.ndjson`), check);
       run.pendingStep = step.id; run.status = 'running'; save(run);
       const sample = await launch(target, step, profile, check, run.toolRoot);
@@ -214,15 +224,15 @@ export async function execute(run: Run, userCheck: () => void, continuing = fals
       writeNewJson(path.join(run.root, 'samples', `${step.id}.json`), sample);
       try { await verifyInputs(run); }
       catch (error) { sample.valid = false; sample.error = String(error); sample.metrics = {}; atomicJson(path.join(run.root, 'samples', `${step.id}.json`), sample); }
-      if (!sample.valid) throw Error(sample.error ?? 'Invalid sample');
+      if (!sample.valid) { check(); throw Error(sample.error ?? 'Invalid sample'); }
       run.next++; delete run.pendingStep; save(run);
-      console.log(JSON.stringify(sample.metrics));
+      console.error(JSON.stringify(sample.metrics));
     }
     run.status = 'complete';
   } catch (error) {
-    run.status = /STOP|interrupt/i.test(String(error)) ? 'interrupted' : 'failed'; run.error = String(error);
+    run.failure = failure(error, 'MEASUREMENT_FAILED', 'measurement');
+    run.status = run.failure.code === 'INTERRUPTED' ? 'interrupted' : 'failed'; run.error = run.failure.message;
   } finally {
-    await clearRegistration(run); save(run); clearActive(run); console.log(report(run));
+    await clearRegistration(run); save(run); clearActive(run);
   }
-  if (run.status !== 'complete' || run.cleanupError) process.exitCode = 1;
 }

@@ -13,6 +13,12 @@ export const HELP = `Electron Benchmarks (Windows x64, Node >=22.12)
   --out <directory>  New output directory (never overwritten)
   --help  Show help without preparing or running a test
 
+  stdout: one JSON result/error on normal process exit (help is plain text).
+  stderr: progress and a short human-readable summary. No HTML is generated.
+  Results: summary.json, environment.json, plan.json, run.json, samples/*.json.
+  Read status, dataComplete, error, cleanupError, and sample counts before comparison.
+  Exit codes: 0 complete, 1 execution/output failure, 2 invalid input, 130 interrupted.
+
   all runs cold, warm, memory, cpu; cold/all require interactive reboot consent.
   Cold: Windows reboot, sign in, wait >=120s and 3 CPU readings <=10%.
   Resource tests: static window, settle 10s, observe 20s, sample every 1s.

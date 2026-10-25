@@ -2,7 +2,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-Unofficial, reproducible performance benchmarks for Electron, covering startup time, memory usage, and CPU usage across versions.
+An unofficial Electron benchmark CLI for AI agents: reproducible startup, memory, and CPU measurements with structured results across versions.
 
 This is an independent community project and is not affiliated with or endorsed by the Electron project.
 
@@ -54,9 +54,17 @@ node ./bin/electron-bench.js --config ./examples/benchmark.json
 
 Config fields are `test`, `electrons`, optional `scenario`, `repeat`, and `out`; relative paths are relative to the config file. Config files cannot be mixed with test arguments. See the [schema](docs/config.schema.json) and [example](examples/benchmark.json).
 
-Results include `report.html`, `summary.json`, the frozen `plan.json`, task state in `run.json`, per-run JSON samples and environment logs. Failed and warmup samples are retained and excluded from formal quantiles. P50/P90 use linear interpolation. Do not compare different timing origins, scenario versions or hardware as equivalent experiments.
+Each normal test invocation emits one JSON object on stdout. Progress, prompts, and a short human summary go to stderr. Results include `summary.json`, `environment.json`, the frozen `plan.json`, task state in `run.json`, per-run JSON samples and environment logs. No HTML is generated. Failed and warmup samples are retained and excluded from formal quantiles. P50/P90 use linear interpolation. Do not compare different timing origins, scenario versions or hardware as equivalent experiments.
 
-The HTML report is in Chinese. Single-version results use metric cards; multi-version results place versions in columns and metrics in rows. All primary values and version differences use P50. P90, individual runs, and environment details are expandable. Failed, unmeasured, and missing metrics remain distinct from measured zero.
+Agents should read the compact summary first, then follow `artifacts` paths for environment and raw data as needed. The summary declares the baseline, metric units and definitions, P50/P90, P50 differences, sample counts, missing metrics, and warnings. Check `status`, `dataComplete`, `error`, `cleanupError`, and sample counts before interpreting values. A single sample is flagged and cannot establish a performance regression. Failed, unmeasured, and missing metrics remain distinct from measured zero.
+
+Output protocol v2 is defined in [output.schema.json](docs/output.schema.json); samples retain [schema v1](docs/sample.schema.json). See the [consumer example](examples/read-results.mjs):
+
+```powershell
+node ./examples/read-results.mjs ./results/startup-comparison/summary.json
+```
+
+Exit codes: `0` complete with full data and successful cleanup, `1` execution/output failure or incomplete data, `2` invalid input, `130` interrupted or reboot consent declined (cleanup failure takes precedence as `1`). Errors expose `code`, `stage`, and `message`; stderr text is not an error signal. `--help` remains plain text. Noninteractive cold/all calls return `REBOOT_CONSENT_REQUIRED` before preparation. During authorized reboots, process termination is not task completion: inspect persistent `run.json` and `summary.json` until the task reaches a terminal state. Artifact paths are absolute on the measurement host; relocate them when copying a run.
 
 Startup measures parent-before-spawn to APP READY and the first observed visible video callback, using the [reused QPC/FILETIME clock bridge](THIRD_PARTY_NOTICES.md). The latter is not physical screen presentation. Resource tests use a static page, wait 10 seconds, then observe for 20 seconds at 1-second intervals. Private bytes measure private committed memory; working-set sums may double-count shared pages. CPU uses Windows cumulative process-time deltas, normalized over all logical processors; Electron's raw percentage counters are retained but are not the formal CPU metric. Hypervisor presence is reported and does not establish physical-machine cold performance.
 
@@ -77,7 +85,7 @@ Unit tests do not reboot, register startup entries or alter automatic login. See
 
 ## Structure
 
-Standardized scenarios define the workloads. A shared Runner executes scenarios and collects data. A Reporter produces measurement results and version comparison reports.
+Standardized scenarios define the workloads. A shared Runner executes scenarios and collects data. A summarizer produces structured measurements and baseline comparisons. Callers create any tables, charts, or HTML they need.
 
 Configuration, repeated runs, and reporting design draw on Chromium Crossbench.
 

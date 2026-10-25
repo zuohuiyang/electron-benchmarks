@@ -1,4 +1,4 @@
-// Synthetic records for renderer tests only; never used as benchmark results.
+// Synthetic records for output-contract tests only; never used as benchmark results.
 import fs from 'node:fs';
 import path from 'node:path';
 import { plan } from '../dist/config.js';

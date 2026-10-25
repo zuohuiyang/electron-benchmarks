@@ -1,3 +1,4 @@
+import type { Failure } from './errors.js';
 export type TestName = 'startup' | 'memory' | 'cpu' | 'all';
 export type Phase = 'cold' | 'warm' | 'memory' | 'cpu';
 export interface Config {
@@ -30,6 +31,6 @@ export interface Run {
   lastBoot: string; pendingStep?: string; warmBoot?: string; userSid: string;
   nodePath: string; nodeSha256: string; toolRoot: string;
   toolManifest: { path: string; sha256: string }[]; environment: Record<string, unknown>;
-  restartCount: number; startupCommand?: string; error?: string; cleanupError?: string;
+  restartCount: number; startupCommand?: string; error?: string; cleanupError?: string; failure?: Failure;
   planSha256?: string;
 }
