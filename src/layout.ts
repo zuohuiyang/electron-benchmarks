@@ -9,7 +9,7 @@ import { BenchmarkError } from './errors.js';
 const pad = (n: number, width = 2) => String(n).padStart(width, '0');
 export const detailPath = (root: string, ...parts: string[]): string => path.join(root, 'detail', ...parts);
 export function runTime(now = new Date()) {
-  const offset = -now.getTimezoneOffset();
+  const offset = -now.getTimezoneOffset() || 0;
   const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   const clock = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${pad(now.getMilliseconds(), 3)}`;
   return { startedAt: now.toISOString(), localStartedAt: `${date}T${clock}${offset < 0 ? '-' : '+'}${pad(Math.floor(Math.abs(offset) / 60))}:${pad(Math.abs(offset) % 60)}`,

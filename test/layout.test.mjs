@@ -37,6 +37,8 @@ test('structured timestamps retain milliseconds and explicit local zone/offset',
  const t=runTime(new Date(2026,9,31,15,30,12,123));
  assert.match(t.localStartedAt,/^2026-10-31T15:30:12\.123[+-]\d{2}:\d{2}$/);
  assert.equal(Date.parse(t.startedAt),Date.parse(t.localStartedAt));assert(t.timeZone);assert(Number.isInteger(t.utcOffsetMinutes));
+ const utc=new Date('2026-10-31T15:30:12.123Z');utc.getTimezoneOffset=()=>0;
+ assert.equal(runTime(utc).utcOffsetMinutes,0);
 });
 
 test('summary preserves compact environment and effective conditions for every supported phase',()=>{
