@@ -1,0 +1,46 @@
+{
+  "name": "electron-benchmarks",
+  "version": "0.1.0",
+  "description": "Electron benchmarks for AI agents: reproducible Windows measurements and structured results",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zuohuiyang/electron-benchmarks.git"
+  },
+  "homepage": "https://github.com/zuohuiyang/electron-benchmarks#readme",
+  "bugs": "https://github.com/zuohuiyang/electron-benchmarks/issues",
+  "type": "module",
+  "bin": {
+    "electron-benchmarks": "bin/electron-benchmarks.js"
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "tsc && node scripts/build-native.mjs",
+    "build:ts": "tsc",
+    "test": "npm run build:ts && node --test test/*.test.mjs",
+    "prepack": "npm run build",
+    "start": "node bin/electron-benchmarks.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "native/windows-helper.exe",
+    "native/windows-helper.cc",
+    "harness",
+    "scripts/build-native.mjs",
+    "scripts/extract.ps1",
+    "THIRD_PARTY_NOTICES.md",
+    "docs",
+    "doc",
+    "examples",
+    "Todo.md"
+  ],
+  "dependencies": {
+    "@electron/get": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3"
+  }
+}

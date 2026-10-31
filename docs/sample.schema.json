@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Electron Benchmarks sample v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "step",
+    "targetId",
+    "valid",
+    "metrics",
+    "raw",
+    "startedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "phase",
+        "target",
+        "round",
+        "warmup"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "cold",
+            "warm",
+            "memory",
+            "cpu"
+          ]
+        },
+        "target": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "round": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warmup": {
+          "type": "boolean"
+        }
+      }
+    },
+    "targetId": {
+      "type": "string"
+    },
+    "valid": {
+      "type": "boolean"
+    },
+    "error": {
+      "type": "string"
+    },
+    "metrics": {
+      "type": "object",
+      "propertyNames": {
+        "enum": [
+          "appReadyMs",
+          "videoCallbackMs",
+          "parentToCreationMs",
+          "spawnCallMs",
+          "privateBytesSumMiB",
+          "workingSetSumMiB",
+          "observedWorkingSetPeakMiB",
+          "cpuPercentMachine",
+          "cpuTimeSeconds"
+        ]
+      },
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "raw": {
+      "type": "object"
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

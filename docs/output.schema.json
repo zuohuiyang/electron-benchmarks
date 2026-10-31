@@ -1,0 +1,677 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "electron-benchmarks output v3",
+  "description": "stdout and summary.json. Artifact paths are relative to the directory containing summary.json. Reject unsupported schema versions.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/result"
+    },
+    {
+      "$ref": "#/$defs/error"
+    }
+  ],
+  "$defs": {
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "kind",
+        "toolVersion",
+        "sceneVersion",
+        "status",
+        "baselineTarget",
+        "dataComplete",
+        "completed",
+        "planned",
+        "valid",
+        "failed",
+        "unexecuted",
+        "error",
+        "cleanupError",
+        "targets",
+        "groups",
+        "metricDefinitions",
+        "warnings",
+        "statistics",
+        "artifacts",
+        "test",
+        "scenarios",
+        "time",
+        "environment",
+        "conditions",
+        "outputDirectory"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 3
+        },
+        "kind": {
+          "const": "result"
+        },
+        "toolVersion": {
+          "type": "string"
+        },
+        "sceneVersion": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "prepared",
+            "running",
+            "waiting-reboot",
+            "complete",
+            "failed",
+            "interrupted"
+          ]
+        },
+        "baselineTarget": {
+          "type": "string"
+        },
+        "dataComplete": {
+          "type": "boolean"
+        },
+        "completed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "planned": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "valid": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unexecuted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/failure"
+            }
+          ]
+        },
+        "cleanupError": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/failure"
+            }
+          ]
+        },
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "input",
+              "version",
+              "identity"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "input": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "identity": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "groups": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/group"
+          }
+        },
+        "metricDefinitions": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "appReadyMs",
+              "videoCallbackMs",
+              "parentToCreationMs",
+              "spawnCallMs",
+              "privateBytesSumMiB",
+              "workingSetSumMiB",
+              "observedWorkingSetPeakMiB",
+              "cpuPercentMachine",
+              "cpuTimeSeconds"
+            ]
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/definition"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/warning"
+          }
+        },
+        "statistics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "primary",
+            "secondary",
+            "comparison",
+            "quantileMethod",
+            "warmupsExcluded",
+            "failedExcluded",
+            "difference",
+            "zeroBaselinePercent"
+          ],
+          "properties": {
+            "primary": {
+              "const": "p50"
+            },
+            "secondary": {
+              "const": "p90"
+            },
+            "comparison": {
+              "const": "p50"
+            },
+            "quantileMethod": {
+              "const": "linear-interpolation"
+            },
+            "warmupsExcluded": {
+              "const": true
+            },
+            "failedExcluded": {
+              "const": true
+            },
+            "difference": {
+              "const": "target-minus-baseline"
+            },
+            "zeroBaselinePercent": {
+              "type": "null"
+            }
+          }
+        },
+        "artifacts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "summary",
+            "environment",
+            "samples",
+            "logs",
+            "plan",
+            "state"
+          ],
+          "properties": {
+            "summary": {
+              "const": "summary.json"
+            },
+            "environment": {
+              "const": "detail/environment.json"
+            },
+            "samples": {
+              "const": "detail/samples/"
+            },
+            "logs": {
+              "const": "detail/logs/"
+            },
+            "plan": {
+              "enum": [
+                "detail/plan.json",
+                null
+              ]
+            },
+            "state": {
+              "enum": [
+                "detail/state.json",
+                null
+              ]
+            }
+          }
+        },
+        "test": {
+          "enum": [
+            "startup",
+            "startup:warm",
+            "memory",
+            "cpu"
+          ]
+        },
+        "scenarios": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "warm",
+              "memory",
+              "cpu"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "time": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "startedAt",
+            "localStartedAt",
+            "timeZone",
+            "utcOffsetMinutes",
+            "updatedAt"
+          ],
+          "properties": {
+            "startedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "localStartedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "timeZone": {
+              "type": "string"
+            },
+            "utcOffsetMinutes": {
+              "type": "integer",
+              "minimum": -840,
+              "maximum": 840
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "os",
+            "build",
+            "architecture",
+            "cpu",
+            "memoryBytes",
+            "virtualized"
+          ],
+          "properties": {
+            "os": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "build": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "architecture": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "cpu": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "models",
+                "logicalCores"
+              ],
+              "properties": {
+                "models": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "logicalCores": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "memoryBytes": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "virtualized": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          }
+        },
+        "conditions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "warmupsPerTarget",
+            "formalRunsPerTarget",
+            "resourceObservation"
+          ],
+          "properties": {
+            "warmupsPerTarget": {
+              "type": "object",
+              "propertyNames": {
+                "enum": [
+                  "warm",
+                  "memory",
+                  "cpu"
+                ]
+              },
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "minProperties": 1
+            },
+            "formalRunsPerTarget": {
+              "type": "object",
+              "propertyNames": {
+                "enum": [
+                  "warm",
+                  "memory",
+                  "cpu"
+                ]
+              },
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "minProperties": 1
+            },
+            "resourceObservation": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "settleMs",
+                    "observeMs",
+                    "sampleMs"
+                  ],
+                  "properties": {
+                    "settleMs": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "observeMs": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "sampleMs": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "outputDirectory": {
+          "type": "string",
+          "description": "Original output directory for locating CLI results. After copying an archive, resolve artifacts against the actual summary.json directory instead."
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "kind",
+        "status",
+        "error"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 3
+        },
+        "kind": {
+          "const": "error"
+        },
+        "status": {
+          "enum": [
+            "failed",
+            "interrupted"
+          ]
+        },
+        "error": {
+          "$ref": "#/$defs/failure"
+        }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "stage",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "input",
+            "environment",
+            "prepare",
+            "consent",
+            "measurement",
+            "cleanup",
+            "output"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "p50",
+        "p90"
+      ],
+      "properties": {
+        "p50": {
+          "type": "number"
+        },
+        "p90": {
+          "type": "number"
+        },
+        "difference": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "absolute",
+            "percent"
+          ],
+          "properties": {
+            "absolute": {
+              "type": "number"
+            },
+            "percent": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "phase",
+        "planned",
+        "valid",
+        "failed",
+        "unexecuted",
+        "missingMetrics",
+        "metrics"
+      ],
+      "properties": {
+        "target": {
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "warm",
+            "memory",
+            "cpu"
+          ]
+        },
+        "planned": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "valid": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unexecuted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missingMetrics": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "appReadyMs",
+              "videoCallbackMs",
+              "parentToCreationMs",
+              "spawnCallMs",
+              "privateBytesSumMiB",
+              "workingSetSumMiB",
+              "observedWorkingSetPeakMiB",
+              "cpuPercentMachine",
+              "cpuTimeSeconds"
+            ]
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "appReadyMs",
+              "videoCallbackMs",
+              "parentToCreationMs",
+              "spawnCallMs",
+              "privateBytesSumMiB",
+              "workingSetSumMiB",
+              "observedWorkingSetPeakMiB",
+              "cpuPercentMachine",
+              "cpuTimeSeconds"
+            ]
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/metric"
+          }
+        }
+      }
+    },
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "warm",
+            "memory",
+            "cpu"
+          ]
+        }
+      }
+    },
+    "definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unit",
+        "direction",
+        "role",
+        "description"
+      ],
+      "properties": {
+        "unit": {
+          "enum": [
+            "ms",
+            "MiB",
+            "%",
+            "s"
+          ]
+        },
+        "direction": {
+          "enum": [
+            "lower",
+            "informational"
+          ]
+        },
+        "role": {
+          "enum": [
+            "primary",
+            "secondary",
+            "diagnostic"
+          ]
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

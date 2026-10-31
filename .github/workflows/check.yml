@@ -1,0 +1,17 @@
+name: Build and check
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npm test
+      - run: powershell.exe -NoProfile -File tools/windows/tests/autologon.Tests.ps1
+      - run: npm pack --dry-run
+      # No benchmark, reboot, autologon, or HKCU Run changes on shared CI hosts.

@@ -1,0 +1,6 @@
+{
+  "test": "startup:warm",
+  "electrons": ["40.0.0", "41.0.0"],
+  "repeat": 20,
+  "out": "../results/startup-comparison"
+}
