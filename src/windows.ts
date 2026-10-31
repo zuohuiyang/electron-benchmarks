@@ -49,28 +49,9 @@ export async function waitIdle(logFile: string, check: () => void): Promise<Nati
   }
   throw Error('Environment did not become idle within 20 minutes; no sample was taken.');
 }
-export async function checkAutologon(root = TOOL_ROOT): Promise<Record<string, unknown>> {
-  try {
-    const { stdout } = await exec(powershell(), ['-NoProfile', '-File', path.join(root, 'tools/windows/autologon.ps1'), 'status', '-Json'], { windowsHide: true, timeout: 15_000 });
-    return JSON.parse(stdout.replace(/^\uFEFF/, ''));
-  } catch (error) { return { state: 'unknown', message: String(error) }; }
-}
 export async function environment(): Promise<Record<string, unknown>> {
   const info = inspect(); assertDesktop(info);
   const script = "$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); $os=Get-CimInstance Win32_OperatingSystem; $sys=Get-CimInstance Win32_ComputerSystem; $disks=Get-CimInstance Win32_DiskDrive; $power=powercfg /getactivescheme; [ordered]@{os=$os.Caption;build=$os.BuildNumber;manufacturer=$sys.Manufacturer;model=$sys.Model;disks=@($disks|Select-Object Model,MediaType,Size,Index);power=@($power)}|ConvertTo-Json -Depth 4 -Compress";
   const { stdout } = await exec(powershell(), ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, timeout: 30_000 });
-  return { ...JSON.parse(stdout.replace(/^\uFEFF/, '')), platform: process.platform, architecture: process.arch, node: process.version, cpus: os.cpus(), memoryBytes: os.totalmem(), controller: info, autologon: await checkAutologon() };
-}
-// Constant script + environment variables avoid injecting CLI paths into PowerShell code.
-export async function startup(action: 'install' | 'remove', command: string): Promise<void> {
-  const script = `$ErrorActionPreference='Stop'; $key='HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'; $name='ElectronBenchmarks'; $old=Get-ItemPropertyValue -LiteralPath $key -Name $name -ErrorAction SilentlyContinue; if($env:BENCH_STARTUP_ACTION -eq 'install'){if($old -and $old -ne $env:BENCH_STARTUP_COMMAND){throw 'Another cold benchmark startup is registered'}; if(!(Test-Path -LiteralPath $key)){New-Item -Path $key|Out-Null}; New-ItemProperty -LiteralPath $key -Name $name -Value $env:BENCH_STARTUP_COMMAND -PropertyType String -Force|Out-Null}else{if($old -eq $env:BENCH_STARTUP_COMMAND){Remove-ItemProperty -LiteralPath $key -Name $name}else{if($old){throw 'Startup entry changed; leaving it untouched'}}}`;
-  if (action === 'install' && command.length > 260) throw Error('Persistent run path is too long for the Windows Run entry (260 characters).');
-  await exec(powershell(), ['-NoProfile', '-NonInteractive', '-Command', script], { env: { ...process.env, BENCH_STARTUP_ACTION: action, BENCH_STARTUP_COMMAND: command }, windowsHide: true, timeout: 15_000 });
-}
-export function startupCommand(node: string, cli: string, root: string): string {
-  for (const value of [node, cli, root]) if (/["\r\n\0%]/.test(value)) throw Error('Cold-run paths cannot contain quotes, newlines or percent signs.');
-  return `"${node}" "${cli}" --continue-cold "${root}"`;
-}
-export async function reboot(): Promise<void> {
-  await exec(path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'shutdown.exe'), ['/r', '/t', '0'], { windowsHide: true, timeout: 10_000 });
+  return { ...JSON.parse(stdout.replace(/^\uFEFF/, '')), platform: process.platform, architecture: process.arch, node: process.version, cpus: os.cpus(), memoryBytes: os.totalmem(), controller: info };
 }

@@ -6,6 +6,20 @@ import { isVersion } from './config.js';
 import { manifest, isWithin, sha256 } from './files.js';
 import { localRoot, exec, powershell, TOOL_ROOT } from './windows.js';
 import type { Target } from './model.js';
+import { BenchmarkError } from './errors.js';
+
+export async function downloadRelease(version: string, get = downloadArtifact): Promise<string> {
+  let last: unknown;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try { return await get({ version, artifactName: 'electron', platform: 'win32', arch: 'x64' }); }
+    catch (error) {
+      last = error;
+      if (attempt < 2) console.error(`Electron ${version} download/verification failed; retrying once (2/2): ${String(error)}`);
+    }
+  }
+  const error = last as Error & { cause?: { code?: string; message?: string } };
+  throw new BenchmarkError('DOWNLOAD_FAILED', 'prepare', `Could not download and verify Electron ${version} from its official GitHub release after 2 attempts: ${error?.message ?? String(last)}${error?.cause ? ` (${error.cause.code ?? error.cause.message ?? 'network error'})` : ''}. Check network access and retry the command.`);
+}
 
 export function distributionManifest(executable: string): { path: string; sha256: string }[] {
   const root = path.dirname(executable);
@@ -25,7 +39,7 @@ export function verifyTarget(target: Target): void {
   if (JSON.stringify(distributionManifest(target.executable)) !== JSON.stringify(target.manifest)) throw Error(`Target runtime inputs changed: ${target.executable}`);
 }
 
-export async function resolveTarget(input: string, index: number, runRoot: string): Promise<Target> {
+export async function resolveTarget(input: string, index: number, runRoot: string, workRoot = runRoot): Promise<Target> {
   let executable: string;
   if (isVersion(input)) {
     if (Number(input.split('.')[0]) < 22) throw Error('Electron >=22 is required by the fixed scenario APIs.');
@@ -34,7 +48,7 @@ export async function resolveTarget(input: string, index: number, runRoot: strin
     // A completion marker prevents an interrupted unzip from being used as a target.
     if (!fs.existsSync(path.join(cache, '.complete'))) {
       console.error(`Preparing Electron ${input}...`);
-      const zip = await downloadArtifact({ version: input, artifactName: 'electron', platform: 'win32', arch: 'x64' });
+      const zip = await downloadRelease(input);
       const staging = `${cache}.${randomUUID()}.partial`;
       fs.mkdirSync(staging, { recursive: true });
       await exec(powershell(), ['-NoProfile', '-NonInteractive', '-File', path.join(TOOL_ROOT, 'scripts/extract.ps1')], { env: { ...process.env, BENCH_ZIP: zip, BENCH_DESTINATION: staging }, windowsHide: true, timeout: 300_000 });
@@ -49,8 +63,9 @@ export async function resolveTarget(input: string, index: number, runRoot: strin
   }
   const root = path.dirname(executable);
   if (isWithin(runRoot, root) || isWithin(root, runRoot)) throw Error('Output and Electron distribution directories must not contain one another.');
+  if (isWithin(workRoot, root) || isWithin(root, workRoot)) throw Error('Workspace and Electron distribution directories must not contain one another.');
   // Fingerprint the full distribution (not just its launcher).
   const inputs = distributionManifest(executable);
   const identity = createHash('sha256').update(JSON.stringify(inputs)).digest('hex');
-  return { id: `target-${index + 1}`, input, executable, version: isVersion(input) ? input : 'local (preflight pending)', identity, manifest: inputs, profileTemplate: path.join(runRoot, 'profiles', `template-${index + 1}`) };
+  return { id: `target-${index + 1}`, input, executable, version: isVersion(input) ? input : 'local (preflight pending)', identity, manifest: inputs, profileTemplate: path.join(workRoot, 'profiles', `template-${index + 1}`) };
 }

@@ -9,24 +9,24 @@ import { reportFixture } from './report-fixture.mjs';
 function emit(fixture) {
   fixture.save();
   const result = report(fixture.run);
-  assert.deepEqual(result, JSON.parse(fs.readFileSync(result.artifacts.summary, 'utf8')));
+  assert.deepEqual(result, JSON.parse(fs.readFileSync(path.join(fixture.root,result.artifacts.summary), 'utf8')));
   assert.equal(fs.existsSync(path.join(fixture.root, 'report.html')), false);
-  for (const file of Object.values(result.artifacts).filter(Boolean)) assert(fs.existsSync(file), file);
+  for (const file of Object.values(result.artifacts).filter(Boolean)) { assert(!path.isAbsolute(file)); assert(fs.existsSync(path.join(fixture.root,file)), file); }
   return result;
 }
 
-for (const [kind, targets] of [['startup', 1], ['startup', 3], ['all', 1], ['all', 3]]) {
+for (const [kind, targets] of [['startup', 1], ['startup', 3], ['startup:warm', 1], ['memory', 1], ['memory', 3], ['cpu', 1], ['cpu', 3]]) {
   test(`${kind}/${targets} emits complete machine-readable results without HTML`, () => {
     const fixture = reportFixture(kind, targets), result = emit(fixture);
-    assert.equal(result.schemaVersion, 2); assert.equal(result.kind, 'result');
+    assert.equal(result.schemaVersion, 3); assert.equal(result.kind, 'result');
     assert.equal(result.dataComplete, true); assert.equal(resultExitCode(result), 0);
     assert.equal(result.baselineTarget, 'target-1'); assert.equal(result.targets.length, targets);
     assert.equal(result.statistics.primary, 'p50'); assert.equal(result.statistics.comparison, 'p50');
-    assert.equal(result.valid, targets * 3 * (kind === 'all' ? 4 : 1));
+    assert.equal(result.valid, targets * 3);
     assert.equal(result.unexecuted, 0); assert.equal(result.error, null);
-    assert.equal(result.environment, undefined); assert.equal(result.layoutVersion, undefined);
+    assert.equal(result.environment.os, fixture.run.environment.os); assert.equal(result.layoutVersion, undefined);
     assert.equal(result.links, undefined);
-    assert.equal(JSON.parse(fs.readFileSync(result.artifacts.environment)).os, fixture.run.environment.os);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(fixture.root,result.artifacts.environment))).os, fixture.run.environment.os);
     for (const group of result.groups) {
       assert.equal(group.planned, 3); assert.equal(group.valid, 3); assert.deepEqual(group.missingMetrics, []);
       for (const [key, metric] of Object.entries(group.metrics)) {
@@ -34,8 +34,7 @@ for (const [kind, targets] of [['startup', 1], ['startup', 3], ['all', 1], ['all
         assert(result.metricDefinitions[key].unit); assert(result.metricDefinitions[key].description);
       }
     }
-    if (kind === 'all') assert.deepEqual([...new Set(result.groups.map(g => g.phase))], ['cold', 'warm', 'memory', 'cpu']);
-    assert.equal(fs.readdirSync(result.artifacts.samples).length, fixture.samples.length);
+    assert.equal(fs.readdirSync(path.join(fixture.root,result.artifacts.samples)).length, fixture.samples.length);
     assert.match(terminalSummary(result), /P50=/); assert.doesNotMatch(terminalSummary(result), /\.html/);
   });
 }
@@ -51,13 +50,13 @@ test('comparison computes unrounded P50 differences rather than P90 differences'
 });
 
 test('failed and unexecuted samples are explicit and never appear as zero', () => {
-  const fixture = reportFixture('all', 1);
-  const cold = fixture.samples.find(s => s.step.phase === 'cold');
+  const fixture = reportFixture('startup', 1);
+  const cold = fixture.samples.find(s => !s.step.warmup);
   cold.valid = false; cold.error = 'Clock failed'; cold.metrics = {};
   fixture.samples.splice(0, fixture.samples.length, cold);
   fixture.run.status = 'failed'; fixture.run.error = 'Clock failed';
   const result = emit(fixture);
-  assert.equal(result.valid, 0); assert.equal(result.failed, 1); assert.equal(result.unexecuted, 11);
+  assert.equal(result.valid, 0); assert.equal(result.failed, 1); assert.equal(result.unexecuted, 2);
   assert.equal(result.dataComplete, false); assert.equal(resultExitCode(result), 1);
   assert.equal(result.error.message, 'Clock failed');
   assert(result.groups.every(g => !Object.keys(g.metrics).length));
@@ -94,7 +93,7 @@ test('a complete flag cannot hide missing samples; one sample yields a structure
 
 test('sample identity and duplicate files cannot inflate sample counts', () => {
   const fixture = reportFixture('startup', 1);
-  fs.writeFileSync(path.join(fixture.root, 'samples', 'duplicate.json'), JSON.stringify(fixture.samples[0]));
+  fs.writeFileSync(path.join(fixture.root, 'detail/samples', 'duplicate.json'), JSON.stringify(fixture.samples[0]));
   assert.throws(() => report(fixture.run), /duplicated/);
   fixture.save(); fixture.samples[0].targetId = 'wrong-target'; fixture.save();
   assert.throws(() => report(fixture.run), /test plan/);
@@ -112,24 +111,37 @@ test('user-declined consent is interrupted, cleanup failures are not success', (
 });
 
 test('CLI invalid input produces one parseable JSON document and separate stderr', () => {
-  const child = spawnSync(process.execPath, ['bin/electron-bench.js', 'startup', '--electron', '40.0.0', '--repeat', '0'], { encoding: 'utf8' });
+  const child = spawnSync(process.execPath, ['bin/electron-benchmarks.js', 'startup', '--electron', '40.0.0', '--repeat', '0'], { encoding: 'utf8' });
   assert.equal(child.status, 2); const result = JSON.parse(child.stdout);
-  assert.equal(result.schemaVersion, 2); assert.equal(result.kind, 'error');
+  assert.equal(result.schemaVersion, 3); assert.equal(result.kind, 'error');
   assert.equal(result.error.code, 'INVALID_INPUT'); assert.equal(result.error.stage, 'input');
   assert.match(child.stderr, /INVALID_INPUT/); assert.doesNotMatch(child.stdout, /Preflight|Summary:/);
 });
 
-test('noninteractive cold call fails before output creation or environment inspection', { skip: process.platform !== 'win32' }, () => {
+test('CLI help names available tests and misspelled selectors return a correction', () => {
+  const help = spawnSync(process.execPath, ['bin/electron-benchmarks.js', '--help'], { encoding: 'utf8' });
+  assert.equal(help.status, 0);
+  assert.match(help.stdout, /not available in 0.1.0/);
+  assert.doesNotMatch(help.stdout, /--scenario/);
+  const child = spawnSync(process.execPath, ['bin/electron-benchmarks.js', 'starup:cold', '--electron', '40.0.0'], { encoding: 'utf8' });
+  assert.equal(child.status, 2);
+  const result = JSON.parse(child.stdout);
+  assert.equal(result.error.code, 'INVALID_INPUT');
+  assert.match(result.error.message, /Did you mean startup:cold/);
+  assert.doesNotMatch(child.stderr, /Preflight|Reboot in|Preparing Electron/);
+});
+
+for (const selector of ['startup:cold', 'startup:all', 'all', '--continue-cold']) test(`noninteractive ${selector} fails before output creation or environment inspection`, { skip: process.platform !== 'win32' }, () => {
   // No --out: cold defaults outside the source tree, and must fail before creating it.
-  const child = spawnSync(process.execPath, ['bin/electron-bench.js', 'all', '--electron', '40.0.0'], { encoding: 'utf8' });
-  assert.equal(child.status, 1); const result = JSON.parse(child.stdout);
-  assert.equal(result.error.code, 'REBOOT_CONSENT_REQUIRED');
+  const child = spawnSync(process.execPath, ['bin/electron-benchmarks.js', selector, '--electron', '40.0.0'], { encoding: 'utf8' });
+  assert.equal(child.status, 2); const result = JSON.parse(child.stdout);
+  assert.equal(result.error.code, 'UNSUPPORTED_TEST');
   assert.doesNotMatch(child.stderr, /Preflight|Reboot in|Preparing Electron/);
 });
 
 test('consumer example reads metrics with units and preserves sample warnings', () => {
   const fixture = reportFixture('startup', 2, 1), result = emit(fixture);
-  const child = spawnSync(process.execPath, ['examples/read-results.mjs', result.artifacts.summary], { encoding: 'utf8' });
+  const child = spawnSync(process.execPath, ['examples/read-results.mjs', path.join(fixture.root,result.artifacts.summary)], { encoding: 'utf8' });
   assert.equal(child.status, 0);
   const consumed = JSON.parse(child.stdout);
   assert.equal(consumed.rows.length, 2); assert.equal(consumed.rows[0].unit, 'ms');

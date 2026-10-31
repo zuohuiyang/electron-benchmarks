@@ -1,8 +1,8 @@
 import type { Failure } from './errors.js';
-export type TestName = 'startup' | 'memory' | 'cpu' | 'all';
+export type TestName = 'startup' | 'startup:warm' | 'memory' | 'cpu';
 export type Phase = 'cold' | 'warm' | 'memory' | 'cpu';
 export interface Config {
-  test: TestName; electrons: string[]; scenario?: 'warm' | 'cold'; repeat?: number; out?: string;
+  test: TestName; electrons: string[]; repeat?: number; out?: string;
 }
 export const PRESET = Object.freeze({ startupRepeat: 20, resourceRepeat: 10, warmups: 5,
   resourceWarmups: 1, settleMs: 10_000, observeMs: 20_000, sampleMs: 1_000,
@@ -26,7 +26,8 @@ export interface Sample {
   metrics: Record<string, number>; raw: Record<string, unknown>; startedAt: string;
 }
 export interface Run {
-  schemaVersion: 1; toolVersion: string; root: string; config: Config; targets: Target[];
+  schemaVersion: 2; toolVersion: string; root: string; workRoot: string; config: Config; targets: Target[];
+  time: { startedAt: string; localStartedAt: string; timeZone: string; utcOffsetMinutes: number }; presets: typeof PRESET;
   steps: Step[]; next: number; status: 'prepared' | 'running' | 'waiting-reboot' | 'complete' | 'failed' | 'interrupted';
   lastBoot: string; pendingStep?: string; warmBoot?: string; userSid: string;
   nodePath: string; nodeSha256: string; toolRoot: string;

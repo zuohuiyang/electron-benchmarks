@@ -10,7 +10,7 @@
   "bugs": "https://github.com/zuohuiyang/electron-benchmarks/issues",
   "type": "module",
   "bin": {
-    "electron-bench": "bin/electron-bench.js"
+    "electron-benchmarks": "bin/electron-benchmarks.js"
   },
   "engines": {
     "node": ">=22.12"
@@ -20,7 +20,7 @@
     "build:ts": "tsc",
     "test": "npm run build:ts && node --test test/*.test.mjs",
     "prepack": "npm run build",
-    "start": "node bin/electron-bench.js"
+    "start": "node bin/electron-benchmarks.js"
   },
   "files": [
     "bin",
@@ -28,8 +28,6 @@
     "native/windows-helper.exe",
     "native/windows-helper.cc",
     "harness",
-    "tools/windows/autologon.ps1",
-    "tools/windows/README.md",
     "scripts/build-native.mjs",
     "scripts/extract.ps1",
     "THIRD_PARTY_NOTICES.md",

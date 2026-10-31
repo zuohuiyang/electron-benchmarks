@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseArgs, plan } from '../dist/config.js';
+import { parseArgs, plan, validateConfig } from '../dist/config.js';
 import { quantile, difference, resources, nativeCpu } from '../dist/statistics.js';
-import { resumeAllowed, assertFrozenPlan, copyDependencies } from '../dist/runner.js';
+import { assertFrozenPlan } from '../dist/runner.js';
 import { summarize } from '../dist/report.js';
 import { manifest, verifyManifest, atomicJson, writeNewJson, sha256 } from '../dist/files.js';
-import { startupCommand, systemCpu, assertPriority } from '../dist/windows.js';
+import { systemCpu, assertPriority } from '../dist/windows.js';
 import { stderrHasFailure } from '../dist/launch.js';
 fs.mkdirSync('.test-output', { recursive: true });
 
@@ -31,18 +31,39 @@ test('JSON config is equivalent to CLI and resolves paths relative to its file',
   assert.deepEqual(plan(c), plan({ test: 'startup', electrons: ['40.0.0', 'any'], repeat: 2 }));
   assert.throws(() => parseArgs(['--config', 'x', '--repeat', '2']));
 });
-test('all is cold-first; cold count equals targets times repeat; no cold warmups', () => {
-  const steps = plan({ test: 'all', electrons: ['a', 'b', 'c'], repeat: 2 });
-  assert.equal(steps.filter(s => s.phase === 'cold').length, 6);
-  assert(steps.filter(s => s.phase === 'cold').every(s => !s.warmup));
-  assert.deepEqual([...new Set(steps.map(s => s.phase))], ['cold', 'warm', 'memory', 'cpu']);
-  assert.deepEqual(steps.slice(0, 6).map(s => s.target), [0, 1, 2, 1, 2, 0]);
-  assert.equal(steps.filter(s => s.phase === 'warm' && s.warmup).length, 15);
+
+test('CLI and JSON share the exact supported test:scenario combinations', () => {
+  const expected = {
+    startup: ['warm'], 'startup:warm': ['warm'], memory: ['memory'], cpu: ['cpu']
+  };
+  const schema = JSON.parse(fs.readFileSync('docs/config.schema.json', 'utf8'));
+  assert.deepEqual(schema.properties.test.enum, Object.keys(expected));
+  assert.equal(schema.properties.scenario, undefined);
+  const root = fs.mkdtempSync(path.resolve('.test-output/selector-config-'));
+  for (const [name, phases] of Object.entries(expected)) {
+    const file = path.join(root, name.replace(':', '-') + '.json');
+    fs.writeFileSync(file, JSON.stringify({ test: name, electrons: ['40.0.0'], repeat: 2 }));
+    const cli = parseArgs([name, '--electron', '40.0.0', '--repeat', '2']);
+    const json = parseArgs(['--config', file]);
+    assert.deepEqual(cli, json); assert.deepEqual(plan(cli), plan(json));
+    const steps = plan(cli);
+    assert.deepEqual([...new Set(steps.map(s => s.phase))], phases);
+    for (const phase of phases) assert.equal(steps.filter(s => s.phase === phase && !s.warmup).length, 2);
+    assert(steps.filter(s => s.phase === 'cold').every(s => !s.warmup));
+    const defaults = plan({ test: name, electrons: ['40.0.0'] });
+    for (const phase of phases) assert.equal(defaults.filter(s => s.phase === phase && !s.warmup).length, ['cold', 'warm'].includes(phase) ? 20 : 10);
+  }
+  assert.deepEqual(plan({ test: 'startup', electrons: ['40.0.0'] }), plan({ test: 'startup:warm', electrons: ['40.0.0'] }));
 });
-test('cold continuation never replays a pending sample or same-boot launch', () => {
-  assert.equal(resumeAllowed({ status: 'waiting-reboot', lastBoot: 'A' }, 'B'), true);
-  for (const state of [{ status: 'waiting-reboot', lastBoot: 'A', pendingStep: '2' }, { status: 'running', lastBoot: 'A' }, { status: 'failed', lastBoot: 'A' }]) assert.equal(resumeAllowed(state, 'B'), false);
-  assert.equal(resumeAllowed({ status: 'waiting-reboot', lastBoot: 'A' }, 'A'), false);
+
+test('unknown selectors, multiple colons and legacy scenario inputs are rejected clearly', () => {
+  for (const test of ['starup:cold', 'startup:cool', 'startup:', ':cold', 'startup:cold:all', 'memory:cold', 'memory:all', 'cpu:warm', 'all:cold', 'constructor', '__proto__', ['startup'], null]) {
+    assert.throws(() => validateConfig({ test, electrons: ['40.0.0'] }), /Supported/);
+  }
+  assert.throws(() => parseArgs(['starup:cold', '--electron', '40.0.0']), /Did you mean startup:cold/);
+  assert.throws(() => parseArgs(['startup:cold:all', '--electron', '40.0.0']), /at most one colon/);
+  assert.throws(() => parseArgs(['startup', '--electron', '40.0.0', '--scenario', 'cold']), /no longer supported.*startup:warm/);
+  assert.throws(() => validateConfig({ test: 'startup', electrons: ['40.0.0'], scenario: 'cold' }), /no longer supported.*startup:warm/);
 });
 test('quantiles match fixed linear interpolation; baseline zero is not a zero-percent result', () => {
   assert.equal(quantile([40, 10, 30, 20], .5), 25); assert.equal(quantile([10, 20], .9), 19);
@@ -71,9 +92,7 @@ test('frozen manifests detect content changes and unlisted files; sample writes 
   const file = path.join(dir, 'state.json'); writeNewJson(file, { next: 1 });
   assert.throws(() => writeNewJson(file, {})); atomicJson(file, { next: 2 }); assert.equal(JSON.parse(fs.readFileSync(file)).next, 2);
 });
-test('cold startup command rejects registry expansion paths; priority checks include IO and memory', () => {
-  assert.match(startupCommand('C:\\node.exe', 'C:\\tool\\cli.js', 'C:\\run'), /--continue-cold/);
-  assert.throws(() => startupCommand('C:\\%TEMP%\\node.exe', 'C:\\cli', 'C:\\run'));
+test('priority checks include CPU, IO and memory', () => {
   assertPriority({ cpuPriority: 32, ioPriority: 2, memoryPriority: 5 });
   assert.throws(() => assertPriority({ cpuPriority: 32, ioPriority: 1, memoryPriority: 5 }));
   assert.equal(systemCpu({ kernelTime: '100', userTime: '100', idleTime: '50' }, { kernelTime: '200', userTime: '200', idleTime: '150' }), 50);
@@ -86,28 +105,13 @@ test('native CPU uses nonnegative cumulative process times, ignoring buggy Elect
   const memory = resources([{ intervalMs: 1000, processes: [{ ...processRow(), cpu: { percentCPUUsage: -1 } }] }], 4, true);
   assert.equal(memory.privateBytesSumMiB, 1); assert.equal(memory.cpuPercentMachine, undefined);
 });
-test('changing a saved config or frozen plan prevents cold continuation', () => {
+test('changing a saved config or frozen plan prevents execution', () => {
   const dir = fs.mkdtempSync(path.resolve('.test-output/plan-'));
-  const frozen = { schemaVersion: 1, toolVersion: 'test', root: dir, config: { test: 'startup', electrons: ['40.0.0'] }, targets: [], steps: [], userSid: 'test', nodePath: 'node', nodeSha256: 'hash', toolRoot: dir, toolManifest: [] };
-  const file = path.join(dir, 'plan.json'); fs.writeFileSync(file, JSON.stringify(frozen));
+  const frozen = { schemaVersion: 2, toolVersion: 'test', root: dir, workRoot: dir + '/workspace', time: {}, presets: {}, config: { test: 'startup', electrons: ['40.0.0'] }, targets: [], steps: [], userSid: 'test', nodePath: 'node', nodeSha256: 'hash', toolRoot: dir, toolManifest: [] };
+  fs.mkdirSync(path.join(dir,'detail'));
+  const file = path.join(dir, 'detail/plan.json'); fs.writeFileSync(file, JSON.stringify(frozen));
   const run = { ...frozen, planSha256: sha256(file) };
   assertFrozenPlan(run);
   assert.throws(() => assertFrozenPlan({ ...run, config: { ...run.config, repeat: 2 } }));
   fs.appendFileSync(file, ' '); assert.throws(() => assertFrozenPlan(run));
-});
-test('cold snapshot resolves hoisted npm dependencies and freezes transitive code', () => {
-  const root = fs.mkdtempSync(path.resolve('.test-output/hoisted-'));
-  const source = path.join(root, 'node_modules/app');
-  const dep = path.join(root, 'node_modules/dep');
-  const leaf = path.join(root, 'node_modules/leaf');
-  for (const dir of [source, dep, leaf]) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(source, 'package.json'), JSON.stringify({ dependencies: { dep: '1' }, optionalDependencies: { leaf: '1', absent: '1' } }));
-  fs.writeFileSync(path.join(dep, 'package.json'), JSON.stringify({ dependencies: { leaf: '1' } }));
-  fs.writeFileSync(path.join(leaf, 'package.json'), '{}'); fs.writeFileSync(path.join(leaf, 'index.js'), 'frozen');
-  const to = path.join(root, 'snapshot'); copyDependencies(source, to);
-  assert.equal(fs.readFileSync(path.join(to, 'node_modules/dep/node_modules/leaf/index.js'), 'utf8'), 'frozen');
-  assert.equal(fs.readFileSync(path.join(to, 'node_modules/leaf/index.js'), 'utf8'), 'frozen');
-  assert.equal(fs.existsSync(path.join(to, 'node_modules/absent')), false);
-  fs.writeFileSync(path.join(leaf, 'index.js'), 'changed');
-  assert.equal(fs.readFileSync(path.join(to, 'node_modules/dep/node_modules/leaf/index.js'), 'utf8'), 'frozen');
 });

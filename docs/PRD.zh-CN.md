@@ -1,10 +1,10 @@
 # electron-benchmarks PRD / 简明使用说明
 
-版本：0.4 · 更新日期：2026-10-31
+版本：0.1.0 · 更新日期：2026-10-31
 
-本文介绍安装、常用输入输出和冷启动正常流程。取消、异常处理及详细字段说明见[详细用户说明](USER-GUIDE.zh-CN.md)，实现原理见[技术方案](TECHNICAL-DESIGN.zh-CN.md)。
+本文介绍 0.1.0 的安装、常用输入输出和使用方式。取消、异常处理及详细字段说明见[详细用户说明](USER-GUIDE.zh-CN.md)，实现原理见[技术方案](TECHNICAL-DESIGN.zh-CN.md)。
 
-统一命名、结果目录、汇总内容及冷启动自动登录要求先作为产品约定记录，工程行为尚未全部同步。
+本版提供热启动、内存和 CPU 测试。冷启动及包含冷启动的组合入口留待后续版本。
 
 ## 1. 产品用途
 
@@ -23,7 +23,7 @@ electron-benchmarks --help
 
 安装包包含运行所需文件，无需自行编译。安装后可以在任意工作目录使用 `electron-benchmarks`。
 
-本文示例统一使用安装后的 `electron-benchmarks` 命令。源码运行方式见[详细说明](USER-GUIDE.zh-CN.md#6-源码开发补充)。
+本文示例统一使用安装后的 `electron-benchmarks` 命令。源码运行方式见[详细说明](USER-GUIDE.zh-CN.md#5-源码开发补充)。
 
 ## 3. 输入
 
@@ -34,11 +34,8 @@ CLI 测试参数与 JSON 的 `test` 字段使用相同的 `测试名:场景` 写
 | 输入 | 执行内容 | 是否重启 |
 | --- | --- | --- |
 | `startup` / `startup:warm` | 热启动 | 否 |
-| `startup:cold` | 冷启动 | 是 |
-| `startup:all` | 先冷启动，再热启动 | 是 |
 | `memory` | 单窗口空闲内存 | 否 |
 | `cpu` | 单窗口空闲 CPU | 否 |
-| `all` | 冷启动、热启动、内存、CPU | 是 |
 
 ### 3.2 常用命令
 
@@ -63,7 +60,7 @@ electron-benchmarks cpu --electron 40.0.0 --repeat 3
 | 参数 | 默认值 | 用途 |
 | --- | --- | --- |
 | `--electron` | 无，必填 | 版本号或完整本地构建中的 `electron.exe` 路径；可重复 |
-| `--repeat` | 冷、热启动各 20 次；内存、CPU 各 10 次 | 每个目标、每项测试的正式测量次数，不含预热 |
+| `--repeat` | 热启动 20 次；内存、CPU 各 10 次 | 每个目标、每项测试的正式测量次数，不含预热 |
 | `--out` | 当前账户的 `%LOCALAPPDATA%\ElectronBenchmarks\runs\YYYYMMDD-HHmm-测试名` | 指定结果目录 |
 | `--config` | 不读取配置文件 | 从 JSON 读取完整测试配置 |
 | `--help` | 不启用 | 显示用法 |
@@ -89,17 +86,9 @@ electron-benchmarks --config .\benchmark.json
 
 JSON 与 CLI 使用相同的测试名和参数含义，`electrons` 顺序决定基准。配置中的相对路径以配置文件目录为基准。
 
-## 4. 冷启动速度测试
+## 4. 版本范围
 
-在已配置自动登录的账户中，用非管理员交互终端执行。自动登录可通过 [Windows 辅助工具](../tools/windows/README.md) 设置。
-
-```powershell
-electron-benchmarks startup:cold --electron 40.0.0
-```
-
-工具检查当前账户的自动登录配置并展示测试安排。输入 `y` 确认后开始冷启动测试，自动完成每轮重启、登录和测量，直到达到指定次数并保存结果，无需再次执行命令。
-
-多轮测试的重启次数为目标数 × 每个目标的冷启动正式次数；不指定 `--repeat` 时，每个目标默认重启 20 次。
+0.1.0 暂不开放 `startup:cold`、`startup:all` 和 `all`，调用时提示尚未支持。本版不重启系统或设置测试自启动。
 
 ## 5. 输出
 
@@ -121,7 +110,7 @@ electron-benchmarks startup:cold --electron 40.0.0
 
 AI 默认先读 `summary.json`，确认 `status` 为 `complete`、`dataComplete` 为 `true`，核对样本量后使用指标。汇总提供 P50/P90，版本差值统一按 P50 计算；指标单位与含义见 `metricDefinitions`。
 
-需要复核时，通过 `artifacts` 读取详细文件，引用路径相对于本次结果目录。测试结束后可以整体迁移结果目录，运行文件由工具另行管理。具体字段和读取示例见[详细用户说明](USER-GUIDE.zh-CN.md#4-详细输出与数据消费)。
+需要复核时，通过 `artifacts` 读取详细文件，引用路径相对于本次结果目录。测试结束后可以整体迁移结果目录，运行文件由工具另行管理。具体字段和读取示例见[详细用户说明](USER-GUIDE.zh-CN.md#3-详细输出与数据消费)。
 
 ## 6. 进一步阅读
 

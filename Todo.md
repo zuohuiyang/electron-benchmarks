@@ -8,13 +8,12 @@
 
 ## 任务管理与异常断点续测
 
-- [ ] `electron-bench status`：查询任务进度和状态。
-- [ ] `electron-bench resume`：重新检查条件后，从异常中断处继续。
-- [ ] `electron-bench cancel`：从独立终端停止任务并清理设置。
+- [ ] `electron-benchmarks status`：查询任务进度和状态。
+- [ ] `electron-benchmarks resume`：重新检查条件后，从异常中断处继续。
+- [ ] `electron-benchmarks cancel`：从独立终端停止任务并清理设置。
 
 ## 分发与数据消费
 
 - [ ] 提供只校验配置和预览执行计划的入口，提前展示样本数与重启次数。
-- [ ] 提供带明确 Node 运行依赖说明的 ZIP 离线分发包。
 - [ ] 提供从原始数据离线重算结构化汇总的独立入口。
 - [ ] 在用户确认的专用实体机上验收完整冷启动自启动、重启、逐样本续跑和清理流程。

@@ -24,29 +24,29 @@ Electron Benchmarks 是可复现的 Electron 性能基准测试套件，用固�
 
 ## 2. 使用方式
 
-以 CLI 为入口，用 JSON 保存测试配置，在本地查看 HTML 报告。CLI 名称为 `electron-bench`。分发优先提供 npm 包，ZIP 可补充离线分发，包名和具体发布渠道待定。第一阶段不做桌面 GUI、在线服务或持续性能看板。
+以 CLI 为入口，用 JSON 保存测试配置，在本地查看 HTML 报告。CLI 名称为 `electron-benchmarks`。通过 npm 包分发。第一阶段不做桌面 GUI、在线服务或持续性能看板。
 
 ### 2.1 命令形式
 
 参考 Crossbench，以测试名作为命令入口：
 
 ```text
-electron-bench <test> --electron <version-or-path> [options]
+electron-benchmarks <test[:scenario]> --electron <version-or-path> [options]
 ```
 
-测试名为 `startup`、`memory`、`cpu` 和 `all`。以下示例说明命令用法，版本号仅用于说明输入形式。
+支持 `startup`、`startup:warm`、`startup:cold`、`startup:all`、`memory`、`cpu` 和 `all`。`startup` 等价于 `startup:warm`，`startup:all` 只执行冷热启动。以下示例说明命令用法，版本号仅用于说明输入形式。
 
 `all` 包含冷启动、热启动、内存和 CPU 测试。开始前检查冷启动条件并展示完整测试及重启安排，用户确认后执行；先完成冷启动，再在最后一次开机内完成热启动预热与测量，最后执行资源测试。顺序沿用拆分 PR 的测量经验，避免整批热启动改变冷启动的历史条件。
 
 ```powershell
 # 单版本热启动测试
-electron-bench startup --electron 40.0.0 --scenario warm
+electron-benchmarks startup:warm --electron 40.0.0
 ```
 
 只传一个目标就做单版本测试，重复传入 `--electron` 就做多版本对比：
 
 ```powershell
-electron-bench startup --electron 39.0.0 --electron 40.0.0 --electron 41.0.0
+electron-benchmarks startup --electron 39.0.0 --electron 40.0.0 --electron 41.0.0
 ```
 
 固定以第一个目标为基准，其他目标分别与它比较。执行前显示全部目标和基准，调整参数顺序即可更换基准。
@@ -57,7 +57,6 @@ electron-bench startup --electron 39.0.0 --electron 40.0.0 --electron 41.0.0
 | --- | --- | --- |
 | `--electron` | 版本号或本地构建路径，可重复 | CLI 模式下必填 |
 | `--repeat` | 每个目标、每个场景的正式运行次数 | 启动测试每种冷热条件各 20 次，资源测试次数待定 |
-| `--scenario` | 选择内置场景 | 使用该测试的默认场景 |
 | `--out` | 结果目录 | 自动创建本次运行的独立目录 |
 | `--config` | 从 JSON 读取测试配置 | 作为 CLI 参数的另一种输入方式 |
 | `--help` | 查看用法、场景和指标说明 | 不执行测试 |
@@ -66,7 +65,7 @@ electron-bench startup --electron 39.0.0 --electron 40.0.0 --electron 41.0.0
 
 ```powershell
 # 发布版本与本地构建对比
-electron-bench startup --electron 40.0.0 --electron "D:\builds\candidate\electron.exe"
+electron-benchmarks startup --electron 40.0.0 --electron "D:\builds\candidate\electron.exe"
 ```
 
 发布版本自动下载并缓存，本地构建直接使用。下载、解压和场景准备均在计时前完成。
@@ -75,10 +74,10 @@ electron-bench startup --electron 40.0.0 --electron "D:\builds\candidate\electro
 
 第一版只接受精确版本号。`latest`、版本范围和发布渠道别名留到后续扩展。
 
-启动测试通过 `--scenario warm` 和 `--scenario cold` 区分热启动与冷启动。例如，比较发布版本和本地构建的冷启动耗时，每个目标正式运行 10 次：
+启动测试通过 `startup:warm` 和 `startup:cold` 区分热启动与冷启动，`startup:all` 同时运行两者。例如，比较发布版本和本地构建的冷启动耗时，每个目标正式运行 10 次：
 
 ```powershell
-electron-bench startup --electron 40.0.0 --electron "D:\builds\candidate\electron.exe" --scenario cold --repeat 10 --out ./results/startup-cold
+electron-benchmarks startup:cold --electron 40.0.0 --electron "D:\builds\candidate\electron.exe" --repeat 10 --out ./results/startup-cold
 ```
 
 这次实验以 `40.0.0` 为基准，结果保存到 `./results/startup-cold`。冷热启动的缓存、profile 和预热规则分别定义。
@@ -94,14 +93,13 @@ electron-bench startup --electron 40.0.0 --electron "D:\builds\candidate\electro
 需要重复执行同一实验时，将设置保存为 JSON：
 
 ```powershell
-electron-bench --config benchmark.json
+electron-benchmarks --config benchmark.json
 ```
 
 ```json
 {
   "test": "startup",
   "electrons": ["40.0.0", "D:/builds/candidate/electron.exe"],
-  "scenario": "warm",
   "repeat": 30,
   "out": "./results/startup-warm"
 }
@@ -123,7 +121,7 @@ electron-bench --config benchmark.json
 
 ### 3.1 启动
 
-沿用拆分 PR 后期的计时口径：父进程调用 `spawn()` 紧前起算，测至主进程 `app.whenReady()` 回调入口和标准页面首次有效的可见视频回调。APP READY 是默认主指标；视频回调不代表解码第一帧或物理屏幕输出。完整定义见 [PRD 测量与数据要求](PRD.zh-CN.md#7-测量与数据要求)。
+沿用拆分 PR 后期的计时口径：父进程调用 `spawn()` 紧前起算，测至主进程 `app.whenReady()` 回调入口和标准页面首次有效的可见视频回调。APP READY 是默认主指标；视频回调不代表解码第一帧或物理屏幕输出。完整定义见[技术方案：测量与统计](TECHNICAL-DESIGN.zh-CN.md#2-测量与统计)。
 
 冷启动每个样本前重启，保留 Windows 默认缓存与预取历史。每个目标准备时预检一次，正式测量使用初始 profile 的独立副本，文件完整校验放在测量后。热启动每个目标预热 5 次，并在同一次开机中完成正式测量。默认每种冷热条件各 20 次，输出 P50/P90 和逐轮数据。
 
@@ -168,7 +166,7 @@ CPU 测量需要确定观察期、采样方式和占用百分比的分母，例�
 
 ## 5. 实现方向
 
-采用 TypeScript / Node.js，提供 CLI，npm 包优先，ZIP 可补充离线分发，发布渠道暂不锁定。标准场景定义负载和运行条件，独立的 Runner 执行测试，Reporter 输出结果。被测 Electron 只运行标准场景和必要的测量标记。
+采用 TypeScript / Node.js，提供 CLI，通过 npm 包分发。标准场景定义负载和运行条件，独立的 Runner 执行测试，Reporter 输出结果。被测 Electron 只运行标准场景和必要的测量标记。
 
 进程控制、时间标记和平台采集的具体实现放到技术设计中说明。
 

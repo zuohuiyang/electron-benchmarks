@@ -1,94 +1,74 @@
-# Electron Benchmarks
+# electron-benchmarks
 
 English | [简体中文](README.zh-CN.md)
 
-An unofficial Electron benchmark CLI for AI agents: reproducible startup, memory, and CPU measurements with structured results across versions.
+An unofficial Electron benchmark CLI for AI agents. Measure warm startup, idle memory, and idle CPU against exact Electron releases or local distributions. Compare multiple targets using the first as baseline.
 
-This is an independent community project and is not affiliated with or endorsed by the Electron project.
+## Install
 
-## Purpose
+Windows 10/11 x64, Node.js >=22.12, and Electron >=22 are supported. The npm package includes the native helper and workloads; no compiler is needed to use it.
 
-Electron Benchmarks aims to measure Electron's own performance through standardized scenarios. It helps developers compare versions, detect performance regressions, and validate optimizations.
+```powershell
+npm install --global electron-benchmarks@0.1.0
+electron-benchmarks --help
+electron-benchmarks startup --electron 40.0.0
+electron-benchmarks memory --electron 40.0.0 --electron 41.0.0 --repeat 3
+electron-benchmarks cpu --electron "D:\build\electron.exe" --repeat 3
+```
 
-The initial Windows CLI is implemented. Full reboot-based cold-run validation on a dedicated physical machine is still pending; local workflow checks are not published performance claims.
+Run from a non-elevated terminal on an unlocked, exclusive interactive desktop. Releases are downloaded and verified before measurement, then cached. A local executable must be part of a complete runnable distribution. Startup defaults to 5 warmups and 20 formal samples; memory/CPU default to 1 warmup and 10 formal samples. `--repeat` changes formal samples per target.
 
-## Build and run
+## Input and scope
 
-Windows 10/11 x64, Node.js >=22.12, and Electron >=22 are supported. Building from source requires Visual Studio C++ x64 build tools. A packaged npm artifact includes the native helper; this project has not yet been published to npm.
+`startup` and `startup:warm` select warm startup. `memory` and `cpu` select idle resource measurements. CLI and JSON use the same test string:
+
+```json
+{"test":"startup:warm","electrons":["40.0.0","41.0.0"],"repeat":10}
+```
+
+```powershell
+electron-benchmarks --config benchmark.json
+```
+
+Paths in JSON are relative to the configuration file; CLI paths are relative to the working directory. Use exact versions, not `latest` or ranges. Repeat `--electron` to compare targets; first target is baseline. `--scenario` and a separate JSON `scenario` field are not supported.
+
+**0.1.0 does not provide cold startup.** `startup:cold`, `startup:all`, `all`, and internal cold continuation are rejected before preparation. This release does not reboot Windows or configure startup entries. Other platforms, diagnostics and task management are deferred.
+
+## Results for agents
+
+stdout contains one JSON result or error; progress and a short human summary go to stderr. Read `status`, `dataComplete`, `error`, `cleanupError`, sample counts, and warnings before interpreting metrics. `--help` is plain text.
+
+Default names use local time: `YYYYMMDD-HHmm-startup`, `...-memory`, or `...-cpu`. Automatic collisions get `-2`, `-3`; an explicit `--out` must be new. Each archive contains only:
+
+```text
+20261031-1530-startup/
+  summary.json
+  detail/
+    environment.json
+    plan.json
+    state.json
+    samples/000000.json
+    logs/
+```
+
+Summary protocol v3 includes local/UTC timestamps and time zone, compact environment, effective measurement conditions, target identities, units, P50/P90, P50 baseline differences, and data quality. The stdout `outputDirectory` locates the original result directory. After copying an archive, use its actual location. Artifact paths are relative to the directory containing `summary.json`, so completed archives can be copied together. Runtime profiles are kept separately and cleaned when the task ends. No HTML is generated.
+
+Quantiles use linear interpolation and exclude warmups and failures. Missing values are not zero; baseline zero yields a null percentage. Single samples only validate workflow. Startup endpoints are Electron initialization and the first visible video callback, not page interactivity or physical screen presentation. Private memory is committed memory; summed working sets may double-count shared pages. CPU is normalized over the machine's logical processors.
+
+```powershell
+node "$(npm root --global)\electron-benchmarks\examples\read-results.mjs" "<result-directory>\summary.json"
+```
+
+Ctrl+C or a `detail/STOP` file stops the current task. Exit codes: 0 complete/full data/cleaned, 1 execution or output failure, 2 invalid input or unsupported test, 130 interrupted. stderr alone does not indicate failure. See [configuration](docs/config.schema.json), [output v3](docs/output.schema.json), [samples v1](docs/sample.schema.json), [user guide](docs/USER-GUIDE.zh-CN.md), and [technical design](docs/TECHNICAL-DESIGN.zh-CN.md).
+
+## Develop
 
 ```powershell
 npm ci
 npm run build
-node ./bin/electron-bench.js --help
-
-# Warm startup: 5 warmups, then 20 formal runs by default
-node ./bin/electron-bench.js startup --electron "D:\build\electron.exe"
-
-# Exact published releases are downloaded and cached; first target is baseline
-node ./bin/electron-bench.js startup --electron 40.0.0 --electron 41.0.0 --repeat 10
-
-node ./bin/electron-bench.js memory --electron "D:\build\electron.exe" --repeat 3
-node ./bin/electron-bench.js cpu --electron "D:\build\electron.exe" --repeat 3
-```
-
-Run from a non-elevated terminal on an unlocked, exclusive interactive desktop. Published versions require network access during preparation only. Local input paths must point to a complete runnable distribution or a GN build output containing its runtime assets. The CLI fingerprints runtime assets, excluding compiler intermediates and symbols.
-
-## Cold startup and all tests
-
-```powershell
-node ./bin/electron-bench.js startup --electron "D:\build\electron.exe" --scenario cold --repeat 10
-node ./bin/electron-bench.js all --electron "D:\build\electron.exe" --repeat 3
-```
-
-**These commands can reboot Windows after explicit interactive confirmation.** `all` runs cold, warm, memory, then CPU. Each cold sample requires a separate reboot and sign-in. Files are prepared first; startup uses an HKCU Run entry, never Task Scheduler. A missing automatic-login configuration is advisory: sign in manually after each reboot, or use the separate [Windows helper](tools/windows/README.md). The main CLI never enables or disables automatic login.
-
-Use a persistent output directory outside the tool installation, or accept the default under `%LOCALAPPDATA%/ElectronBenchmarks/runs/`. Cold runs freeze the tool, dependencies and Node executable into `tool/` there. Do not move or edit the run, tool snapshot, target distribution or original tool installation until the test completes. A new process's controller and main Electron CPU/IO/memory priorities must be Normal/2/5.
-
-Cold runs wait at least 120 seconds after boot, then require 3 system CPU readings <=10%, 2 seconds apart, with a 20-minute timeout. Every reboot has a 15-second cancellable countdown; no forced shutdown is requested. Ctrl+C or an empty `STOP` file in the output directory ends the run and cleans its temporary startup entry. If the process was forcibly killed, a later launch cleans stale state; a waiting-reboot task can be stopped by creating `STOP` and invoking the CLI again. Cleanup failures identify the exact remaining registry entry. Interrupted runs do not resume automatically, except normal planned reboot continuation.
-
-## Configuration and output
-
-```powershell
-node ./bin/electron-bench.js --config ./examples/benchmark.json
-```
-
-Config fields are `test`, `electrons`, optional `scenario`, `repeat`, and `out`; relative paths are relative to the config file. Config files cannot be mixed with test arguments. See the [schema](docs/config.schema.json) and [example](examples/benchmark.json).
-
-Each normal test invocation emits one JSON object on stdout. Progress, prompts, and a short human summary go to stderr. Results include `summary.json`, `environment.json`, the frozen `plan.json`, task state in `run.json`, per-run JSON samples and environment logs. No HTML is generated. Failed and warmup samples are retained and excluded from formal quantiles. P50/P90 use linear interpolation. Do not compare different timing origins, scenario versions or hardware as equivalent experiments.
-
-Agents should read the compact summary first, then follow `artifacts` paths for environment and raw data as needed. The summary declares the baseline, metric units and definitions, P50/P90, P50 differences, sample counts, missing metrics, and warnings. Check `status`, `dataComplete`, `error`, `cleanupError`, and sample counts before interpreting values. A single sample is flagged and cannot establish a performance regression. Failed, unmeasured, and missing metrics remain distinct from measured zero.
-
-Output protocol v2 is defined in [output.schema.json](docs/output.schema.json); samples retain [schema v1](docs/sample.schema.json). See the [consumer example](examples/read-results.mjs):
-
-```powershell
-node ./examples/read-results.mjs ./results/startup-comparison/summary.json
-```
-
-Exit codes: `0` complete with full data and successful cleanup, `1` execution/output failure or incomplete data, `2` invalid input, `130` interrupted or reboot consent declined (cleanup failure takes precedence as `1`). Errors expose `code`, `stage`, and `message`; stderr text is not an error signal. `--help` remains plain text. Noninteractive cold/all calls return `REBOOT_CONSENT_REQUIRED` before preparation. During authorized reboots, process termination is not task completion: inspect persistent `run.json` and `summary.json` until the task reaches a terminal state. Artifact paths are absolute on the measurement host; relocate them when copying a run.
-
-Startup measures parent-before-spawn to APP READY and the first observed visible video callback, using the [reused QPC/FILETIME clock bridge](THIRD_PARTY_NOTICES.md). The latter is not physical screen presentation. Resource tests use a static page, wait 10 seconds, then observe for 20 seconds at 1-second intervals. Private bytes measure private committed memory; working-set sums may double-count shared pages. CPU uses Windows cumulative process-time deltas, normalized over all logical processors; Electron's raw percentage counters are retained but are not the formal CPU metric. Hypervisor presence is reported and does not establish physical-machine cold performance.
-
-## Development
-
-```powershell
+node ./bin/electron-benchmarks.js --help
 npm test
-powershell.exe -NoProfile -File ./tools/windows/tests/autologon.Tests.ps1
 npm pack
 ```
 
-Unit tests do not reboot, register startup entries or alter automatic login. See [implementation and validation](docs/IMPLEMENTATION.zh-CN.md), [PRD](docs/PRD.zh-CN.md), [TODO](Todo.md), and [reused code/media notices](THIRD_PARTY_NOTICES.md).
-
-## Test modes
-
-- **Single-version testing**: Run standardized scenarios against one Electron version and report metrics, raw samples, and environment details.
-- **Multi-version comparison**: Run the same standardized scenarios against multiple Electron versions in the same environment. Choose a baseline version and report each version's metrics, absolute differences, and percentage changes relative to that baseline.
-
-## Structure
-
-Standardized scenarios define the workloads. A shared Runner executes scenarios and collects data. A summarizer produces structured measurements and baseline comparisons. Callers create any tables, charts, or HTML they need.
-
-Configuration, repeated runs, and reporting design draw on Chromium Crossbench.
-
-## Initial scope
-
-The first phase focuses on standardized performance testing of Electron itself on Windows. Testing arbitrary user applications is outside the initial scope.
+Source builds require Visual Studio C++ x64 build tools. Tests do not run benchmarks or change system settings. See [validation](docs/IMPLEMENTATION.zh-CN.md), [PRD](docs/PRD.zh-CN.md), [TODO](Todo.md), and [code/media notices](THIRD_PARTY_NOTICES.md). CLI/configuration design draws on Chromium Crossbench. This community project is not affiliated with or endorsed by Electron.
