@@ -1,6 +1,6 @@
 # 首期实现与验证
 
-更新日期：2026-10-31
+更新日期：2026-11-01
 
 ## 实现范围
 
@@ -131,3 +131,13 @@ TypeScript 编译和 37 项自动化测试通过，覆盖七种选择器的 CLI/
 本机实测记录为 `.test-output/release-0.1.0/trial-r1YiiI/verification.json`，Schema 记录位于同目录 `schema-verification.json`。六组候选包的 SHA-256 为 `cac22bb267d780a9e8778b64e7a8d01fc8de090a1b8f196a10e4bff712499224`；最终包还包含上述 UTC 修复与文档更新，单独验收，不混用包指纹。
 
 所有样本在同次开机内完成；未执行冷启动、重启或系统设置变更。少量样本仅验证工具流程，不代表版本性能结论。尚未完成 npm 登录、正式发布与从 registry 安装回归，不将本地 tarball 安装当作已发布验证。
+
+## 2026-11-01 正式发布与 registry 回归
+
+[npm 0.1.0](https://www.npmjs.com/package/electron-benchmarks/v/0.1.0)、`v0.1.0` 标签及 [GitHub Release](https://github.com/zuohuiyang/electron-benchmarks/releases/tag/v0.1.0) 已发布。标签指向 PR #3 合入提交 `73486e640c49e399fc44130f3f57d34a1d9f9009`，合入后的 CI 通过。
+
+从公开 registry 下载的 tarball 与最终验收包完全一致，SHA-256 为 `d016a1dfecbf11c04558e82afcdeaf90c2f18a06d621a2f8d867e338ea36fbc7`，SHA-512 integrity 也一致。使用新的安装目录和 npm 缓存执行 `npm install electron-benchmarks@0.1.0`，安装后帮助命令可用，运行文件与最终验收包逐字节一致。
+
+通过安装后的 `electron-benchmarks` 命令完成热启动：5 次预热和 1 次正式运行全部有效，UTC 时间记录、stdout 与落盘汇总一致性、原始指标复算、消费示例及工作目录清理通过。四个冷启动相关入口仍返回 `UNSUPPORTED_TEST`，未执行冷启动或重启。环境沿用前述 Windows 11 x64 / Node.js 24.15.0，本次单样本只验证发布后的调用流程。
+
+本机记录为 `.test-output/release-0.1.0/registry-verification.json` 和 `registry-install-verification.json`。发布期间先完成 npm 登录与 2FA，再确认暂存版本进入公开 registry；未将上传命令成功或占位版本当作 0.1.0 发布完成。
