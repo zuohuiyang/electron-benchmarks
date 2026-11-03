@@ -184,7 +184,7 @@ AI 默认读取汇总，检查 `status`、`dataComplete`、`error`、`cleanupErr
 
 ## 6. 实现依据与验证边界
 
-- [Windows 启动测量经验](../doc/electron-startup-measurement-pitfalls.zh-CN.md)：计时边界、优先级、缓存历史、调度与虚拟化限制。
+- [Windows 启动测量经验](electron-startup-measurement-pitfalls.zh-CN.md)：计时边界、优先级、缓存历史、调度与虚拟化限制。
 - [实现与验证记录](IMPLEMENTATION.zh-CN.md)：构建、自动化测试、真实样本与尚未完成的跨重启验收。
 - [复用代码与素材来源](../THIRD_PARTY_NOTICES.md)。
 - [后续待办](../Todo.md)：其他平台、任务管理与异常断点续测等未交付能力。

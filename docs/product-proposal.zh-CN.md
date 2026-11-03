@@ -190,6 +190,6 @@ CPU 测量需要确定观察期、采样方式和占用百分比的分母，例�
 本项目参考 Crossbench 的命令入口、多目标参数和配置方式，将场景、调度和采集分开组织。围绕 Electron 的标准场景设计，所需指标默认采集，用帮助命令查询用法。
 
 - [Crossbench 官方说明与用法](https://chromium.googlesource.com/crossbench/+/HEAD/README.md)
-- [Windows 启动测量经验](../doc/electron-startup-measurement-pitfalls.zh-CN.md)
+- [Windows 启动测量经验](electron-startup-measurement-pitfalls.zh-CN.md)
 - [Electron app.ready 生命周期](https://www.electronjs.org/docs/latest/api/app#event-ready)
 - [Electron app.getAppMetrics](https://www.electronjs.org/docs/latest/api/app#appgetappmetrics)

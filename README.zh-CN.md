@@ -1,74 +1,165 @@
-# electron-benchmarks
+# Electron Benchmarks
 
 [English](README.md) | 简体中文
 
-面向 AI Agent 的非官方 Electron 基准测量 CLI，支持热启动、空闲内存、空闲 CPU，以及单版本测试和多版本对比。第一个目标为基准。
+可复现的 Electron 性能基准测试套件，统一测量口径，便于结果比较与交流，减少常见测量误区。
+
+## 项目定位
+
+本项目旨在让 Electron 性能讨论建立在一致的测量口径上。通过固定标准场景、明确指标定义并记录测量条件，让启动时间、内存和 CPU 的测试结果更便于比较、复核与交流。
+
+明确启动计时边界、内存统计口径和 CPU 归一化方式等容易混淆的问题，减少测量方法差异带来的误判，帮助开发者发现版本回归并验证优化效果。
+
+提供对 AI Agent 友好的 CLI 和结构化 JSON 结果，便于自动化执行测试与分析数据。
+
+## 功能特点
+
+- **启动时间**：测量热启动时 Electron 初始化就绪和首次可见视频回调的耗时。
+- **内存与 CPU**：在固定的静态窗口场景下，测量空闲内存与 CPU 占用。
+- **版本对比**：支持单版本测试和多版本对比，也支持本地 Electron 构建。
+- **统计与复核**：自动预热、多轮测量，汇总 P50/P90，并保存环境信息和逐次样本。
+- **Agent 友好**：支持 JSON 配置与结果输出，提供明确的状态、错误和数据完整性信息。
+
+## 结果示例
+
+终端显示进度与简短摘要，同时输出供脚本或 Agent 读取的 JSON 结果。以下为两个版本热启动对比的摘要示意，数值仅用于展示，不代表实际性能：
+
+```text
+complete: 40/40 valid formal samples; 0 failed, 0 unexecuted
+warm target-1 appReadyMs: P50=120.000 ms
+warm target-2 appReadyMs: P50=114.000 ms; delta=-5.00%
+Summary: C:\benchmarks\startup-comparison\summary.json
+```
+
+`target-1`、`target-2` 对应输入顺序，第一个目标为基准。此例中，第二个目标的启动时间 P50 比基准低 5%。
 
 ## 安装
 
-支持 Windows 10/11 x64、Node.js >=22.12、Electron >=22。npm 包包含原生辅助程序与测试场景，使用时无需编译。
+运行环境：
+
+- Windows 10/11 x64。
+- Node.js >=22.12。
+- 待测 Electron >=22。
 
 ```powershell
 npm install --global electron-benchmarks@0.1.0
 electron-benchmarks --help
+```
+
+npm 包包含原生辅助程序与测试场景，使用时无需编译。请在非管理员终端运行，并保持独占、解锁的交互桌面。
+
+## 快速开始
+
+测试一个 Electron 版本的启动时间：
+
+```powershell
 electron-benchmarks startup --electron 40.0.0
+```
+
+比较两个 Electron 版本的启动时间：
+
+```powershell
+electron-benchmarks startup --electron 40.0.0 --electron 41.0.0
+```
+
+所需的 Electron 发布版本会自动下载、校验并缓存。测试完成后，终端会显示结果目录中 `summary.json` 的位置。
+
+## 使用说明
+
+### 选择测试项
+
+| 命令 | 测试内容 | 默认预热 / 正式次数（每个目标） |
+| --- | --- | --- |
+| `startup` 或 `startup:warm` | 热启动时间 | 5 / 20 |
+| `memory` | 空闲内存 | 1 / 10 |
+| `cpu` | 空闲 CPU | 1 / 10 |
+
+重复 `--electron` 可比较多个目标，第一个目标为基准。`--repeat` 修改每个目标的正式测量次数，不包含预热。例如，对两个版本各测量 3 次空闲内存：
+
+```powershell
 electron-benchmarks memory --electron 40.0.0 --electron 41.0.0 --repeat 3
+```
+
+版本号须精确，不接受 `latest` 或版本范围。
+
+### 使用本地 Electron
+
+`--electron` 也接受本地可执行文件路径，可用于验证本地构建的优化效果：
+
+```powershell
 electron-benchmarks cpu --electron "D:\build\electron.exe" --repeat 3
 ```
 
-在非管理员终端运行，保持独占、解锁的交互桌面。发布版本自动下载、校验并缓存，本地路径须指向完整可运行的分发目录。热启动默认每个目标预热 5 次、正式测量 20 次；内存和 CPU 各预热 1 次、正式测量 10 次。`--repeat` 修改每个目标的正式次数。
+本地可执行文件须位于完整、可运行的 Electron 分发目录中。
 
-## 输入与范围
+### 使用配置文件
 
-`startup` 与 `startup:warm` 等价；`memory`、`cpu` 分别测空闲资源。CLI 与 JSON 使用相同测试名：
+将测试配置保存为 `benchmark.json`：
 
 ```json
-{"test":"startup:warm","electrons":["40.0.0","41.0.0"],"repeat":10}
+{
+  "test": "startup:warm",
+  "electrons": ["40.0.0", "41.0.0"],
+  "repeat": 10
+}
 ```
 
 ```powershell
 electron-benchmarks --config benchmark.json
 ```
 
-JSON 相对路径以配置文件目录为基准，CLI 相对路径以工作目录为基准。版本须精确，不接受 `latest` 或范围。重复 `--electron` 比较多个目标。已移除 `--scenario` 和独立的 `scenario` 字段。
+JSON 中的相对路径以配置文件目录为基准，CLI 中的相对路径以当前工作目录为基准。`--config` 单独使用，不与测试 CLI 参数混用。完整字段见[配置参考](docs/config.schema.json)。
 
-**0.1.0 不提供冷启动。** `startup:cold`、`startup:all`、`all` 和内部冷启动继续入口在准备前明确拒绝。本版不重启系统、不设置测试自启动；其他平台、诊断采集和任务管理留待后续。
+### 读取结果
 
-## AI 数据消费
-
-stdout 只输出一个 JSON 结果或错误对象，进度与简短摘要写到 stderr。消费前检查 `status`、`dataComplete`、`error`、`cleanupError`、样本量与警告。`--help` 输出纯文本。
-
-默认目录以本机时间命名为 `YYYYMMDD-HHmm-startup`、`...-memory` 或 `...-cpu`；自动重名追加 `-2`、`-3`，显式 `--out` 必须是新目录。归档结构：
-
-```text
-20261031-1530-startup/
-  summary.json
-  detail/
-    environment.json
-    plan.json
-    state.json
-    samples/000000.json
-    logs/
-```
-
-汇总采用协议 v3，包含完整时间和时区、环境摘要、实际测量条件、目标身份、指标单位、P50/P90、基于 P50 的差值和完整性。stdout 的 `outputDirectory` 用于定位原始目录；迁移后以实际文件位置为准。`artifacts` 相对于 `summary.json` 所在目录，完成后可整体迁移归档。运行 profile 单独存放，任务结束后清理。不生成 HTML。
-
-统计排除预热与失败，缺失值不补零；基准为零时变化百分比为 null。单样本只用于流程验证。启动指标分别为 Electron 初始化就绪和首次可见视频回调，不代表页面可交互或物理屏幕输出。内存私有提交量不是驻留物理内存，工作集求和可能重复计算共享页；CPU 按整机逻辑核容量归一化。
+默认结果保存在 `%LOCALAPPDATA%\ElectronBenchmarks\runs\` 下，目录按本机时间和测试项命名，如 `20261031-1530-startup`。也可通过 `--out` 指定一个尚不存在的结果目录：
 
 ```powershell
-node "$(npm root --global)\electron-benchmarks\examples\read-results.mjs" "<结果目录>\summary.json"
+electron-benchmarks startup --electron 40.0.0 --out .\results\startup-check
 ```
 
-用 Ctrl+C 或创建 `detail/STOP` 停止当前任务。退出码：0 完整完成且清理成功，1 执行或输出失败，2 输入错误或测试未提供，130 主动中断。stderr 有内容不表示失败。参见[配置 Schema](docs/config.schema.json)、[输出 v3](docs/output.schema.json)、[样本 v1](docs/sample.schema.json)、[用户说明](docs/USER-GUIDE.zh-CN.md)和[技术方案](docs/TECHNICAL-DESIGN.zh-CN.md)。
+先读取 `summary.json` 中的状态、统计指标和版本差值；需要复核时，再查看 `detail/` 中的环境信息、测试安排、样本和日志。任务完成后，可以整体迁移结果目录。
 
-## 开发
+对 AI Agent 和脚本，stdout 输出一个 JSON 结果或错误对象，stderr 输出进度与简短摘要；`--help` 输出纯文本。使用指标前应检查执行状态、数据完整性、错误、样本量和警告。详细字段与退出码见[用户指南](docs/USER-GUIDE.zh-CN.md#3-详细输出与数据消费)。
 
-```powershell
-npm ci
-npm run build
-node ./bin/electron-benchmarks.js --help
-npm test
-npm pack
-```
+运行中按 `Ctrl+C`，或创建结果目录下的 `detail/STOP` 文件，可停止当前测试。
 
-源码构建需要 Visual Studio C++ x64 工具链。自动化测试不运行真实基准或修改系统设置。详见[验证记录](docs/IMPLEMENTATION.zh-CN.md)、[PRD](docs/PRD.zh-CN.md)、[待办](Todo.md)和[代码与素材来源](THIRD_PARTY_NOTICES.md)。命令和配置形式参考 Chromium Crossbench。本项目为独立社区项目，与 Electron 官方无隶属关系。
+## 测量说明
+
+### 指标含义
+
+| 测试 | 主要指标 | 含义 |
+| --- | --- | --- |
+| 启动 | `appReadyMs`、`videoCallbackMs`，ms | 从父进程发起启动前的计时点，到 Electron 初始化就绪、首次可见视频回调的耗时 |
+| 内存 | `privateBytesSumMiB`，MiB | 被测进程组的私有提交量之和；另提供工作集与观察期采样峰值 |
+| CPU | `cpuPercentMachine`，%；`cpuTimeSeconds`，s | 按整机逻辑核容量归一化的平均占用，以及观察期累计 CPU 时间 |
+
+汇总提供 P50（中位数）和 P90，版本差值按 P50 计算。预热与失败样本不参与统计，缺失值不补零；基准为零时变化百分比为 `null`。
+
+### 测量条件与结果解读
+
+- 比较结果时，应保持硬件、系统、供电状态和后台负载等条件一致，并核对记录的环境与测量条件。
+- 空闲内存和 CPU 测试在静态窗口启动后等待 10 秒，再观察 20 秒，每秒采样一次。
+- 启动指标分别反映初始化就绪和视频回调，不代表页面可交互或物理屏幕输出。
+- 私有提交量不等于驻留物理内存；工作集求和可能重复计算共享页。CPU 占用的 100% 表示整机逻辑核满载。
+- 单样本只用于验证流程。版本差异需要结合样本量与波动判断，不能仅凭一次测量或一个百分比确认性能回归。
+
+### 当前支持范围
+
+0.1.0 支持 Windows 上的热启动、空闲内存和空闲 CPU 测量。冷启动、其他平台、诊断采集和任务管理留待后续。
+
+## 文档
+
+- [用户指南](docs/USER-GUIDE.zh-CN.md)：参数边界、停止测试、结果读取与退出码。
+- [配置参考](docs/config.schema.json)：JSON 配置字段与约束。
+- [输出格式](docs/output.schema.json)与[样本格式](docs/sample.schema.json)：结构化结果定义。
+- [技术方案](docs/TECHNICAL-DESIGN.zh-CN.md)：测试场景、计时与采集方法。
+- [启动测量注意事项](docs/electron-startup-measurement-pitfalls.zh-CN.md)：启动指标与测量边界。
+- [验证记录](docs/IMPLEMENTATION.zh-CN.md)：已完成的验证及其边界。
+- [后续计划](Todo.md)：待办与后续能力。
+
+## 许可证与声明
+
+本项目为独立社区项目，与 Electron 官方无隶属关系，也未经官方背书。
+
+本项目采用 [MIT 许可证](LICENSE)。复用代码与素材的来源及许可情况见[第三方声明](THIRD_PARTY_NOTICES.md)，测试视频保留其 [Chromium 许可证](harness/CHROMIUM-LICENSE)。命令和配置形式参考 Chromium Crossbench。
