@@ -6,9 +6,9 @@ parent-before-spawn timing are adapted from the user's existing
 `electron-windows-runtime-benchmark/code/` experiment associated with Electron
 PR [#54205](https://github.com/electron/electron/pull/54205).
 
-The prior benchmark's newly authored code did not specify a standalone license.
-It is reused here at its owner's request. This repository has not selected a
-distribution license for that code; do not infer an upstream Electron license.
+The prior benchmark's newly authored code is reused here at its owner's request
+and distributed in this repository under the [MIT License](LICENSE). This
+licensing decision does not derive from or imply an upstream Electron license.
 
 `harness/startup/local-video.mp4` is Chromium's
 `media/test/data/bear-1280x720.mp4`, unchanged, from revision

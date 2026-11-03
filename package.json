@@ -1,6 +1,7 @@
 {
   "name": "electron-benchmarks",
   "version": "0.1.0",
+  "license": "MIT",
   "description": "Electron benchmarks for AI agents: reproducible Windows measurements and structured results",
   "repository": {
     "type": "git",
@@ -32,7 +33,6 @@
     "scripts/extract.ps1",
     "THIRD_PARTY_NOTICES.md",
     "docs",
-    "doc",
     "examples",
     "Todo.md"
   ],

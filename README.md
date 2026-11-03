@@ -1,74 +1,167 @@
-# electron-benchmarks
+# Electron Benchmarks
 
 English | [简体中文](README.zh-CN.md)
 
-An unofficial Electron benchmark CLI for AI agents. Measure warm startup, idle memory, and idle CPU against exact Electron releases or local distributions. Compare multiple targets using the first as baseline.
+A reproducible Electron performance benchmark suite with consistent measurement methods, making results easier to compare and discuss while helping avoid common measurement pitfalls.
 
-## Install
+## Purpose
 
-Windows 10/11 x64, Node.js >=22.12, and Electron >=22 are supported. The npm package includes the native helper and workloads; no compiler is needed to use it.
+This project aims to give Electron performance discussions a consistent measurement basis. Fixed, standard scenarios, explicit metric definitions, and recorded measurement conditions make startup time, memory, and CPU results easier to compare, review, and discuss.
+
+Clarifying common sources of confusion, such as startup timing boundaries, memory accounting, and CPU normalization, helps reduce misinterpretations caused by differing measurement methods, identify version regressions, and validate optimizations.
+
+The CLI and structured JSON results are designed for AI agents and scripts to automate tests and analyze measurements.
+
+## Features
+
+- **Startup time**: Measure warm startup to Electron initialization and the first visible video callback.
+- **Memory and CPU**: Measure idle memory and CPU usage in a fixed static-window scenario.
+- **Version comparisons**: Test a single version or compare multiple versions, including local Electron builds.
+- **Statistics and review**: Run warmups and repeated measurements, report P50/P90, and retain environment information and individual samples.
+- **Agent-friendly interface**: Use JSON configuration and results with explicit status, errors, and data completeness information.
+
+## Example results
+
+The terminal shows progress and a short summary, alongside JSON results for scripts and agents. The following illustrates a warm-startup comparison between two versions. The numbers are examples, not actual measurements:
+
+```text
+complete: 40/40 valid formal samples; 0 failed, 0 unexecuted
+warm target-1 appReadyMs: P50=120.000 ms
+warm target-2 appReadyMs: P50=114.000 ms; delta=-5.00%
+Summary: C:\benchmarks\startup-comparison\summary.json
+```
+
+`target-1` and `target-2` follow the input order; the first target is the baseline. In this example, the second target's P50 startup time is 5% lower than the baseline.
+
+## Installation
+
+Requirements:
+
+- Windows 10/11 x64.
+- Node.js >=22.12.
+- Electron >=22 for the versions being tested.
 
 ```powershell
 npm install --global electron-benchmarks@0.1.0
 electron-benchmarks --help
+```
+
+The npm package includes the native helper and workloads; no compiler is needed to use it. Run from a non-elevated terminal on an unlocked, exclusive interactive desktop.
+
+## Quick start
+
+Measure startup time for one Electron version:
+
+```powershell
 electron-benchmarks startup --electron 40.0.0
+```
+
+Compare startup time between two Electron versions:
+
+```powershell
+electron-benchmarks startup --electron 40.0.0 --electron 41.0.0
+```
+
+Electron releases are automatically downloaded, verified, and cached. When the test finishes, the terminal shows the location of `summary.json` in the result directory.
+
+## Usage
+
+### Choose a test
+
+| Command | Measurement | Default warmups / formal runs per target |
+| --- | --- | --- |
+| `startup` or `startup:warm` | Warm startup time | 5 / 20 |
+| `memory` | Idle memory | 1 / 10 |
+| `cpu` | Idle CPU | 1 / 10 |
+
+Repeat `--electron` to compare targets; the first is the baseline. `--repeat` changes the number of formal runs per target, excluding warmups. For example, measure idle memory three times for each of two versions:
+
+```powershell
 electron-benchmarks memory --electron 40.0.0 --electron 41.0.0 --repeat 3
+```
+
+Use exact version numbers. `latest` and version ranges are not accepted.
+
+### Use a local Electron build
+
+`--electron` also accepts a local executable path, which can be used to validate optimizations in a local build:
+
+```powershell
 electron-benchmarks cpu --electron "D:\build\electron.exe" --repeat 3
 ```
 
-Run from a non-elevated terminal on an unlocked, exclusive interactive desktop. Releases are downloaded and verified before measurement, then cached. A local executable must be part of a complete runnable distribution. Startup defaults to 5 warmups and 20 formal samples; memory/CPU default to 1 warmup and 10 formal samples. `--repeat` changes formal samples per target.
+The executable must be part of a complete, runnable Electron distribution.
 
-## Input and scope
+### Use a configuration file
 
-`startup` and `startup:warm` select warm startup. `memory` and `cpu` select idle resource measurements. CLI and JSON use the same test string:
+Save the test configuration as `benchmark.json`:
 
 ```json
-{"test":"startup:warm","electrons":["40.0.0","41.0.0"],"repeat":10}
+{
+  "test": "startup:warm",
+  "electrons": ["40.0.0", "41.0.0"],
+  "repeat": 10
+}
 ```
 
 ```powershell
 electron-benchmarks --config benchmark.json
 ```
 
-Paths in JSON are relative to the configuration file; CLI paths are relative to the working directory. Use exact versions, not `latest` or ranges. Repeat `--electron` to compare targets; first target is baseline. `--scenario` and a separate JSON `scenario` field are not supported.
+Paths in JSON are relative to the configuration file; CLI paths are relative to the working directory. Use `--config` on its own, without test CLI arguments. See the [configuration reference](docs/config.schema.json) for all fields.
 
-**0.1.0 does not provide cold startup.** `startup:cold`, `startup:all`, `all`, and internal cold continuation are rejected before preparation. This release does not reboot Windows or configure startup entries. Other platforms, diagnostics and task management are deferred.
+### Read results
 
-## Results for agents
-
-stdout contains one JSON result or error; progress and a short human summary go to stderr. Read `status`, `dataComplete`, `error`, `cleanupError`, sample counts, and warnings before interpreting metrics. `--help` is plain text.
-
-Default names use local time: `YYYYMMDD-HHmm-startup`, `...-memory`, or `...-cpu`. Automatic collisions get `-2`, `-3`; an explicit `--out` must be new. Each archive contains only:
-
-```text
-20261031-1530-startup/
-  summary.json
-  detail/
-    environment.json
-    plan.json
-    state.json
-    samples/000000.json
-    logs/
-```
-
-Summary protocol v3 includes local/UTC timestamps and time zone, compact environment, effective measurement conditions, target identities, units, P50/P90, P50 baseline differences, and data quality. The stdout `outputDirectory` locates the original result directory. After copying an archive, use its actual location. Artifact paths are relative to the directory containing `summary.json`, so completed archives can be copied together. Runtime profiles are kept separately and cleaned when the task ends. No HTML is generated.
-
-Quantiles use linear interpolation and exclude warmups and failures. Missing values are not zero; baseline zero yields a null percentage. Single samples only validate workflow. Startup endpoints are Electron initialization and the first visible video callback, not page interactivity or physical screen presentation. Private memory is committed memory; summed working sets may double-count shared pages. CPU is normalized over the machine's logical processors.
+Results are saved under `%LOCALAPPDATA%\ElectronBenchmarks\runs\` by default. Directories are named using local time and the test name, such as `20261031-1530-startup`. Use `--out` to specify a result directory that does not yet exist:
 
 ```powershell
-node "$(npm root --global)\electron-benchmarks\examples\read-results.mjs" "<result-directory>\summary.json"
+electron-benchmarks startup --electron 40.0.0 --out .\results\startup-check
 ```
 
-Ctrl+C or a `detail/STOP` file stops the current task. Exit codes: 0 complete/full data/cleaned, 1 execution or output failure, 2 invalid input or unsupported test, 130 interrupted. stderr alone does not indicate failure. See [configuration](docs/config.schema.json), [output v3](docs/output.schema.json), [samples v1](docs/sample.schema.json), [user guide](docs/USER-GUIDE.zh-CN.md), and [technical design](docs/TECHNICAL-DESIGN.zh-CN.md).
+Read `summary.json` first for status, statistics, and version differences. For further review, use the environment information, test plan, samples, and logs in `detail/`. The entire result directory can be moved after the test finishes.
 
-## Develop
+For AI agents and scripts, stdout contains one JSON result or error object; progress and a short summary go to stderr. `--help` is plain text. Check execution status, data completeness, errors, sample counts, and warnings before using metrics. See the [user guide (Chinese)](docs/USER-GUIDE.zh-CN.md#3-详细输出与数据消费) for detailed fields and exit codes.
 
-```powershell
-npm ci
-npm run build
-node ./bin/electron-benchmarks.js --help
-npm test
-npm pack
-```
+Press `Ctrl+C` or create a `detail/STOP` file in the result directory to stop the current test.
 
-Source builds require Visual Studio C++ x64 build tools. Tests do not run benchmarks or change system settings. See [validation](docs/IMPLEMENTATION.zh-CN.md), [PRD](docs/PRD.zh-CN.md), [TODO](Todo.md), and [code/media notices](THIRD_PARTY_NOTICES.md). CLI/configuration design draws on Chromium Crossbench. This community project is not affiliated with or endorsed by Electron.
+## Measurement notes
+
+### Metrics
+
+| Test | Key metrics | Meaning |
+| --- | --- | --- |
+| Startup | `appReadyMs`, `videoCallbackMs`, ms | Time from the parent process's timing point just before launch to Electron initialization and the first visible video callback |
+| Memory | `privateBytesSumMiB`, MiB | Summed private committed memory of the measured process group; working sets and their sampled peak during observation are also reported |
+| CPU | `cpuPercentMachine`, %; `cpuTimeSeconds`, s | Average CPU usage normalized over all logical processors, and cumulative CPU time during observation |
+
+Summaries report P50 (median) and P90. Version differences use P50. Warmups and failed samples are excluded; missing values are not replaced with zero. A zero baseline yields a `null` percentage change.
+
+### Conditions and interpretation
+
+- Keep hardware, system, power state, and background load consistent when comparing results, and check the recorded environment and measurement conditions.
+- Idle memory and CPU tests wait 10 seconds after the static window starts, then observe for 20 seconds with one sample per second.
+- Startup metrics describe initialization and a video callback, not page interactivity or physical screen presentation.
+- Private committed memory is not resident physical memory. Summed working sets may count shared pages more than once. CPU usage of 100% means all logical processors are fully occupied.
+- A single sample only validates the workflow. Assess version differences alongside sample counts and variability; one measurement or percentage alone does not establish a regression.
+
+### Current scope
+
+Version 0.1.0 supports warm startup, idle memory, and idle CPU measurements on Windows. Cold startup, other platforms, diagnostics, and task management are planned for later releases.
+
+## Documentation
+
+The prose guides below are currently in Chinese.
+
+- [User guide](docs/USER-GUIDE.zh-CN.md): Parameter constraints, stopping tests, reading results, and exit codes.
+- [Configuration reference](docs/config.schema.json): JSON configuration fields and constraints.
+- [Output format](docs/output.schema.json) and [sample format](docs/sample.schema.json): Structured result definitions.
+- [Technical design](docs/TECHNICAL-DESIGN.zh-CN.md): Test scenarios, timing, and collection methods.
+- [Startup measurement notes](docs/electron-startup-measurement-pitfalls.zh-CN.md): Startup metrics and measurement boundaries.
+- [Validation records](docs/IMPLEMENTATION.zh-CN.md): Completed checks and their limitations.
+- [Roadmap](Todo.md): Planned work and future capabilities.
+
+## License and disclaimer
+
+This is an independent community project, not affiliated with or endorsed by Electron.
+
+This project is licensed under the [MIT License](LICENSE). See the [third-party notices](THIRD_PARTY_NOTICES.md) for the origins and licensing status of reused code and media. The test video retains its [Chromium license](harness/CHROMIUM-LICENSE). The command and configuration design draws on Chromium Crossbench.
