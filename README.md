@@ -2,20 +2,11 @@
 
 English | [简体中文](README.zh-CN.md)
 
-A reproducible Electron performance benchmark suite with consistent measurement methods, making results easier to compare and discuss while helping avoid common measurement pitfalls.
-
-## Purpose
-
-This project aims to give Electron performance discussions a consistent measurement basis. Fixed, standard scenarios, explicit metric definitions, and recorded measurement conditions make startup time, memory, and CPU results easier to compare, review, and discuss.
-
-Clarifying common sources of confusion, such as startup timing boundaries, memory accounting, and CPU normalization, helps reduce misinterpretations caused by differing measurement methods, identify version regressions, and validate optimizations.
-
-The CLI and structured JSON results are designed for AI agents and scripts to automate tests and analyze measurements.
+Electron Benchmarks helps developers assess Electron performance and validate optimizations. Tests use fixed scenarios and standardized procedures to reduce bias from improper measurement methods and maintain consistent measurement criteria.
 
 ## Features
 
-- **Startup time**: Measure warm startup to Electron initialization and the first visible video callback.
-- **Memory and CPU**: Measure idle memory and CPU usage in a fixed static-window scenario.
+- **Performance metrics**: Measure startup time, memory, and CPU usage.
 - **Version comparisons**: Test a single version or compare multiple versions, including local Electron builds.
 - **Statistics and review**: Run warmups and repeated measurements, report P50/P90, and retain environment information and individual samples.
 - **Agent-friendly interface**: Use JSON configuration and results with explicit status, errors, and data completeness information.
