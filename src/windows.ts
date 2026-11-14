@@ -55,3 +55,35 @@ export async function environment(): Promise<Record<string, unknown>> {
   const { stdout } = await exec(powershell(), ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, timeout: 30_000 });
   return { ...JSON.parse(stdout.replace(/^\uFEFF/, '')), platform: process.platform, architecture: process.arch, node: process.version, cpus: os.cpus(), memoryBytes: os.totalmem(), controller: info };
 }
+
+// Constant script + environment variables avoid injecting CLI paths into PowerShell code.
+export async function startup(action: 'check' | 'install' | 'remove', command: string): Promise<void> {
+  if (action !== 'remove' && command.length > 260) throw Error('Persistent run path is too long for the Windows Run entry (260 characters).');
+  const script = `
+    $ErrorActionPreference = 'Stop'
+    $key = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'
+    $name = 'ElectronBenchmarks'
+    $command = $env:BENCH_STARTUP_COMMAND
+    $old = Get-ItemPropertyValue -LiteralPath $key -Name $name -ErrorAction SilentlyContinue
+    if ($null -ne $old -and $old -cne $command) {
+      throw 'Another command occupies HKCU Run/ElectronBenchmarks. The entry was left untouched.'
+    }
+    switch ($env:BENCH_STARTUP_ACTION) {
+      'install' {
+        if (!(Test-Path -LiteralPath $key)) { New-Item -Path $key | Out-Null }
+        New-ItemProperty -LiteralPath $key -Name $name -Value $command -PropertyType String -Force | Out-Null
+      }
+      'remove' {
+        if ($old -ceq $command) { Remove-ItemProperty -LiteralPath $key -Name $name }
+      }
+    }
+  `;
+  await exec(powershell(), ['-NoProfile', '-NonInteractive', '-Command', script], { env: { ...process.env, BENCH_STARTUP_ACTION: action, BENCH_STARTUP_COMMAND: command }, windowsHide: true, timeout: 15_000 });
+}
+export function startupCommand(node: string, cli: string): string {
+  for (const value of [node, cli]) if (/["\r\n\0%]/.test(value)) throw Error('Cold-run paths cannot contain quotes, newlines or percent signs.');
+  return `"${node}" "${cli}" --continue-cold`;
+}
+export async function reboot(): Promise<void> {
+  await exec(path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'shutdown.exe'), ['/r', '/t', '0'], { windowsHide: true, timeout: 10_000 });
+}

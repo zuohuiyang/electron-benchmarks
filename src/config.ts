@@ -2,16 +2,17 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Config, Phase, Step, TestName } from './model.js';
 import { PRESET } from './model.js';
-import { BenchmarkError } from './errors.js';
 
-export const HELP = `electron-benchmarks 0.1.0 (Windows x64, Node >=22.12)
+export const HELP = `electron-benchmarks 0.2.0 (Windows x64, Node >=22.12)
   electron-benchmarks <test[:scenario]> --electron <exact-version|electron.exe> [options]
   electron-benchmarks --config benchmark.json
 
   startup / startup:warm  Warm startup (default startup scenario)
   memory                 Idle memory
   cpu                    Idle CPU
-  startup:cold, startup:all, all are not available in 0.1.0 (cold startup deferred).
+  startup:cold           First startup after a Windows restart
+  startup:all            Cold startup, then warm startup
+  all                    Cold startup, warm startup, idle memory, idle CPU
 
   --electron <value>  Repeat to compare targets; the first is the baseline
   --repeat <n>  Formal runs per target/test; startup 20, resources 10
@@ -28,10 +29,13 @@ export const HELP = `electron-benchmarks 0.1.0 (Windows x64, Node >=22.12)
   JSON uses the same test string, e.g. {"test":"startup:warm","electrons":["40.0.0"],"repeat":3}.
   Resource tests: static window, settle 10s, observe 20s, sample every 1s.
   Ctrl+C or detail/STOP in the output directory stops the run.
-  Task management and interrupted-run resumption are not implemented.`;
+  Cold tests require interactive confirmation and one restart per cold sample.
+  Sign in after each restart unless automatic sign-in is configured.
+  Follow summary.json for completion across restarts.`;
 
 const TEST_PHASES: Record<TestName, readonly Phase[]> = {
-  startup: ['warm'], 'startup:warm': ['warm'], memory: ['memory'], cpu: ['cpu']
+  startup: ['warm'], 'startup:warm': ['warm'], 'startup:cold': ['cold'],
+  'startup:all': ['cold', 'warm'], all: ['cold', 'warm', 'memory', 'cpu'], memory: ['memory'], cpu: ['cpu']
 };
 
 function editDistance(a: string, b: string): number {
@@ -45,14 +49,13 @@ function editDistance(a: string, b: string): number {
 }
 
 export function parseTest(value: unknown): TestName {
-  if (['startup:cold', 'startup:all', 'all', '--continue-cold'].includes(String(value))) throw new BenchmarkError('UNSUPPORTED_TEST', 'input', `${value} is not available in 0.1.0. Cold startup is deferred. Use startup, memory, or cpu.`);
   if (typeof value === 'string' && Object.hasOwn(TEST_PHASES, value)) return value as TestName;
-  const names = [...Object.keys(TEST_PHASES), 'startup:cold', 'startup:all', 'all'];
+  const names = Object.keys(TEST_PHASES);
   const prefix = typeof value === 'string' && value.split(':').length > 2
     ? 'Use test[:scenario] with at most one colon.' : `Unknown test: ${JSON.stringify(value)}.`;
   const suggested = typeof value === 'string' && value.length <= 64
     ? names.map(name => ({ name, distance: editDistance(value, name) })).sort((a, b) => a.distance - b.distance)[0] : undefined;
-  throw Error(`${prefix}${suggested && suggested.distance <= 2 ? ` Did you mean ${suggested.name}?` : ''} Supported in 0.1.0: ${Object.keys(TEST_PHASES).join(', ')}.`);
+  throw Error(`${prefix}${suggested && suggested.distance <= 2 ? ` Did you mean ${suggested.name}?` : ''} Supported in 0.2.0: ${Object.keys(TEST_PHASES).join(', ')}.`);
 }
 
 export const phasesFor = (test: TestName): readonly Phase[] => TEST_PHASES[parseTest(test)];

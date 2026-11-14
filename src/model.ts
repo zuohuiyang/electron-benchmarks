@@ -1,5 +1,5 @@
 import type { Failure } from './errors.js';
-export type TestName = 'startup' | 'startup:warm' | 'memory' | 'cpu';
+export type TestName = 'startup' | 'startup:warm' | 'startup:cold' | 'startup:all' | 'all' | 'memory' | 'cpu';
 export type Phase = 'cold' | 'warm' | 'memory' | 'cpu';
 export interface Config {
   test: TestName; electrons: string[]; repeat?: number; out?: string;
@@ -29,7 +29,7 @@ export interface Run {
   schemaVersion: 2; toolVersion: string; root: string; workRoot: string; config: Config; targets: Target[];
   time: { startedAt: string; localStartedAt: string; timeZone: string; utcOffsetMinutes: number }; presets: typeof PRESET;
   steps: Step[]; next: number; status: 'prepared' | 'running' | 'waiting-reboot' | 'complete' | 'failed' | 'interrupted';
-  lastBoot: string; pendingStep?: string; warmBoot?: string; userSid: string;
+  lastBoot: string; pendingStep?: string; userSid: string;
   nodePath: string; nodeSha256: string; toolRoot: string;
   toolManifest: { path: string; sha256: string }[]; environment: Record<string, unknown>;
   restartCount: number; startupCommand?: string; error?: string; cleanupError?: string; failure?: Failure;

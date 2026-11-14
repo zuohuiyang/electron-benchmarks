@@ -62,6 +62,10 @@ electron-benchmarks startup --electron 40.0.0 --electron 41.0.0
 | 命令 | 测试内容 | 默认预热 / 正式次数（每个目标） |
 | --- | --- | --- |
 | `startup` 或 `startup:warm` | 热启动时间 | 5 / 20 |
+
+| `startup:cold` | 重启后首次启动 | 0 / 20 |
+| `startup:all` | 先冷启动，再热启动 | 各场景采用各自默认值 |
+| `all` | 冷启动、热启动、空闲内存、空闲 CPU | 各场景采用各自默认值 |
 | `memory` | 空闲内存 | 1 / 10 |
 | `cpu` | 空闲 CPU | 1 / 10 |
 
@@ -72,6 +76,14 @@ electron-benchmarks memory --electron 40.0.0 --electron 41.0.0 --repeat 3
 ```
 
 版本号须精确，不接受 `latest` 或版本范围。
+
+### 冷启动
+
+```powershell
+electron-benchmarks startup:cold --electron 41.0.0 --repeat 1
+```
+
+每个冷启动样本前重启一次，首次重启前须在交互终端确认总次数。两个目标按默认值将重启 40 次。每次重启后登录同一账户，工具会自动继续。跨重启进度和最终结果见输出目录的 `summary.json`。运行时可按 Ctrl+C，或创建 `detail/STOP` 取消后续测试。
 
 ### 使用本地 Electron
 
@@ -137,7 +149,7 @@ electron-benchmarks startup --electron 40.0.0 --out .\results\startup-check
 
 ### 当前支持范围
 
-0.1.0 支持 Windows 上的热启动、空闲内存和空闲 CPU 测量。冷启动、其他平台、诊断采集和任务管理留待后续。
+0.2.0 支持 Windows 上的冷启动、热启动、空闲内存和空闲 CPU。
 
 ## 文档
 

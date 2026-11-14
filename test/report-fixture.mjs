@@ -17,7 +17,7 @@ export function reportFixture(test = 'startup', targetCount = 1, repeat = 3) {
     environment:{os:'自动化测试夹具（非实测）',build:'test',architecture:'x64',node:process.version,cpus:[{model:'Fixture CPU'},{model:'Fixture CPU'}],memoryBytes:8*1024**3,controller:{virtualized:false,cpuPriority:32,ioPriority:2,memoryPriority:5}}};
   const samples=steps.map((step,index)=>{
     const n=step.warmup?999:10+step.round*10+step.target;
-    const metrics=step.phase==='warm'?{appReadyMs:n,videoCallbackMs:n+100,parentToCreationMs:1+step.target/10,spawnCallMs:2}:step.phase==='memory'?{privateBytesSumMiB:n+100,workingSetSumMiB:n+200,observedWorkingSetPeakMiB:n+250}:{cpuPercentMachine:n/100,cpuTimeSeconds:n/1000};
+    const metrics=(step.phase==='warm'||step.phase==='cold')?{appReadyMs:n,videoCallbackMs:n+100,parentToCreationMs:1+step.target/10,spawnCallMs:2}:step.phase==='memory'?{privateBytesSumMiB:n+100,workingSetSumMiB:n+200,observedWorkingSetPeakMiB:n+250}:{cpuPercentMachine:n/100,cpuTimeSeconds:n/1000};
     return{schemaVersion:1,step,targetId:targets[step.target].id,valid:true,metrics,startedAt:new Date(Date.UTC(2026,9,31,1,0,index)).toISOString(),raw:{source:'synthetic test fixture'}};
   });
   function save(){fs.writeFileSync(detailPath(root,'state.json'),JSON.stringify(run));fs.writeFileSync(detailPath(root,'plan.json'),JSON.stringify({config,steps}));for(const file of fs.readdirSync(detailPath(root,'samples')))fs.unlinkSync(detailPath(root,'samples',file));for(const sample of samples)fs.writeFileSync(detailPath(root,'samples',sample.step.id+'.json'),JSON.stringify(sample));}
