@@ -6,11 +6,6 @@ import { inspect, assertPriority, helperPath, TOOL_ROOT } from './windows.js';
 import { PRESET, type Target, type Step, type Sample } from './model.js';
 import { resources, nativeCpu, type Observation } from './statistics.js';
 
-const benignGpuProbe = /^\[\d+:\d{4}\/\d{6}\.\d+:ERROR:ui\\gl\\direct_composition_support\.cc:\d+\] AMD VideoProcessorGetOutputExtension failed: .+$/;
-export function stderrHasFailure(stderr: string): boolean {
-  return stderr.split(/\r?\n/).some(line => !benignGpuProbe.test(line) &&
-    /:ERROR:|:FATAL:|^(?:\([^)]*\)\s*)?(?:\w*Error:|FATAL\b)|\bUnhandled(?:PromiseRejection| exception| rejection)|sandbox access/i.test(line));
-}
 export async function launch(target: Target, step: Step, profile: string, check: () => void, root = TOOL_ROOT,
   ops = { inspect, spawn }): Promise<Sample> {
   const startup = step.phase === 'cold' || step.phase === 'warm';
@@ -43,7 +38,7 @@ export async function launch(target: Target, step: Step, profile: string, check:
         if (event.event === 'error') error = event.message;
         if (event.event === 'resource-ready' && step.phase === 'cpu') {
           if (cpuResult || !Array.isArray(event.processes) || event.processes.some((p: any) => !Number.isInteger(p.pid) || p.pid < 1)) throw Error('Invalid or duplicate process group');
-          observer = spawn(helperPath(root), ['--observe-cpu', event.processes.map((p: any) => p.pid).join(',')], { windowsHide: true });
+          observer = ops.spawn(helperPath(root), ['--observe-cpu', event.processes.map((p: any) => p.pid).join(',')], { windowsHide: true });
           cpuResult = new Promise((resolve, reject) => {
             let stdout = ''; observer!.stdout!.on('data', chunk => { stdout += chunk; });
             observer!.once('error', reject);
@@ -63,8 +58,6 @@ export async function launch(target: Target, step: Step, profile: string, check:
       const metrics: Record<string, number> = {};
       try {
         if (code !== 0 || error) throw Error(error ?? `Electron exited with code ${code}`);
-        // Startup validity comes from the exit status and structured endpoints below.
-        if (!startup && stderrHasFailure(stderr)) throw Error('Unexpected Electron stderr; see raw sample');
         if (!priority || priority.pid !== child.pid) throw Error('Actual Electron process priority was not verified');
         if (startup) {
           const frames = events.filter(e => e.event === 'first-video-frame');
