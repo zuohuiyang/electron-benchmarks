@@ -16,7 +16,9 @@
         "startup:all",
         "all",
         "memory",
-        "cpu"
+        "memory:idle",
+        "cpu",
+        "cpu:idle"
       ]
     },
     "electrons": {

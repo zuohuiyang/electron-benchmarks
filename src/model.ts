@@ -1,5 +1,5 @@
 import type { Failure } from './errors.js';
-export type TestName = 'startup' | 'startup:warm' | 'startup:cold' | 'startup:all' | 'all' | 'memory' | 'cpu';
+export type TestName = 'startup' | 'startup:warm' | 'startup:cold' | 'startup:all' | 'all' | 'memory' | 'memory:idle' | 'cpu' | 'cpu:idle';
 export type Phase = 'cold' | 'warm' | 'memory' | 'cpu';
 export interface Config {
   test: TestName; electrons: string[]; repeat?: number; out?: string;

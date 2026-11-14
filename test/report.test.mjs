@@ -15,10 +15,11 @@ function emit(fixture) {
   return result;
 }
 
-for (const [kind, targets] of [['startup', 1], ['startup', 3], ['startup:warm', 1], ['startup:cold', 2], ['startup:all', 2], ['all', 2], ['memory', 1], ['memory', 3], ['cpu', 1], ['cpu', 3]]) {
+for (const [kind, targets] of [['startup', 1], ['startup', 3], ['startup:warm', 1], ['startup:cold', 2], ['startup:all', 2], ['all', 2], ['memory', 1], ['memory', 3], ['memory:idle', 1], ['cpu', 1], ['cpu', 3], ['cpu:idle', 1]]) {
   test(`${kind}/${targets} emits complete machine-readable results without HTML`, () => {
     const fixture = reportFixture(kind, targets), result = emit(fixture);
     assert.equal(result.schemaVersion, 3); assert.equal(result.kind, 'result');
+    assert.equal(result.test, kind);
     assert.equal(result.dataComplete, true); assert.equal(resultExitCode(result), 0);
     assert.equal(result.baselineTarget, 'target-1'); assert.equal(result.targets.length, targets);
     assert.equal(result.statistics.primary, 'p50'); assert.equal(result.statistics.comparison, 'p50');

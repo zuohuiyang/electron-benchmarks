@@ -8,8 +8,8 @@ export const HELP = `electron-benchmarks 0.2.0 (Windows x64, Node >=22.12)
   electron-benchmarks --config benchmark.json
 
   startup / startup:warm  Warm startup (default startup scenario)
-  memory                 Idle memory
-  cpu                    Idle CPU
+  memory / memory:idle    Static-window idle memory
+  cpu / cpu:idle          Static-window idle CPU
   startup:cold           First startup after a Windows restart
   startup:all            Cold startup, then warm startup
   all                    Cold startup, warm startup, idle memory, idle CPU
@@ -35,7 +35,7 @@ export const HELP = `electron-benchmarks 0.2.0 (Windows x64, Node >=22.12)
 
 const TEST_PHASES: Record<TestName, readonly Phase[]> = {
   startup: ['warm'], 'startup:warm': ['warm'], 'startup:cold': ['cold'],
-  'startup:all': ['cold', 'warm'], all: ['cold', 'warm', 'memory', 'cpu'], memory: ['memory'], cpu: ['cpu']
+  'startup:all': ['cold', 'warm'], all: ['cold', 'warm', 'memory', 'cpu'], memory: ['memory'], 'memory:idle': ['memory'], cpu: ['cpu'], 'cpu:idle': ['cpu']
 };
 
 function editDistance(a: string, b: string): number {

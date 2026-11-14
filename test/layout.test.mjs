@@ -15,7 +15,11 @@ test('automatic names use local minute and canonical test, collision suffixes ne
  assert.equal(path.basename(createOutputRoot({...config,test:'startup:warm'},base,now)),'20261031-1530-startup-2');
  assert.equal(path.basename(createOutputRoot(config,base,now)),'20261031-1530-startup-3');
  assert.equal(fs.readFileSync(path.join(first,'keep'),'utf8'),'original');
- for(const name of ['memory','cpu'])assert.equal(path.basename(outputRoot({...config,test:name},base,now)),`20261031-1530-${name}`);
+ for(const name of ['memory','cpu']){
+  for(const selector of [name,`${name}:idle`]){
+   assert.equal(path.basename(outputRoot({...config,test:selector},base,now)),`20261031-1530-${name}`);
+  }
+ }
 });
 
 test('explicit output conflicts are rejected without replacing data',()=>{
@@ -50,6 +54,7 @@ test('summary preserves compact environment and effective conditions for every s
   assert.equal(s.environment.cpus,undefined);assert.equal(s.outputDirectory,f.root);
   assert.equal(s.conditions.formalRunsPerTarget[s.scenarios[0]],2);
   assert.equal(s.conditions.warmupsPerTarget[s.scenarios[0]],name==='startup'?5:1);
+  assert.equal(s.conditions.resourceObservation?.scenario,name==='startup'?undefined:'idle');
   assert.equal(s.conditions.resourceObservation?.observeMs,name==='startup'?undefined:21000);
   assert.equal(s.time.startedAt,f.run.time.startedAt);
  }

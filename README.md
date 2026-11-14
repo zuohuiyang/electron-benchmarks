@@ -66,13 +66,13 @@ Electron releases are automatically downloaded, verified, and cached. When the t
 | `startup:cold` | First launch after Windows restarts | 0 / 20 |
 | `startup:all` | Cold startup followed by warm startup | Per-phase defaults |
 | `all` | Cold startup, warm startup, idle memory, idle CPU | Per-phase defaults |
-| `memory` | Idle memory | 1 / 10 |
-| `cpu` | Idle CPU | 1 / 10 |
+| `memory` / `memory:idle` | Idle memory | 1 / 10 |
+| `cpu` / `cpu:idle` | Idle CPU | 1 / 10 |
 
 Repeat `--electron` to compare targets; the first is the baseline. `--repeat` changes the number of formal runs per target, excluding warmups. For example, measure idle memory three times for each of two versions:
 
 ```powershell
-electron-benchmarks memory --electron 40.0.0 --electron 41.0.0 --repeat 3
+electron-benchmarks memory:idle --electron 40.0.0 --electron 41.0.0 --repeat 3
 ```
 
 Use exact version numbers. `latest` and version ranges are not accepted.
@@ -90,12 +90,14 @@ Each cold sample requires a Windows restart. Confirm the total in an interactive
 `--electron` also accepts a local executable path, which can be used to validate optimizations in a local build:
 
 ```powershell
-electron-benchmarks cpu --electron "D:\build\electron.exe" --repeat 3
+electron-benchmarks cpu:idle --electron "D:\build\electron.exe" --repeat 3
 ```
 
 The executable must be part of a complete, runnable Electron distribution.
 
 ### Use a configuration file
+
+The static-window idle scenario is available as `memory:idle` and `cpu:idle`.
 
 Save the test configuration as `benchmark.json`:
 
