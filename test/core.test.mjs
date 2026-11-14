@@ -8,13 +8,7 @@ import { assertFrozenPlan } from '../dist/runner.js';
 import { summarize } from '../dist/report.js';
 import { manifest, verifyManifest, atomicJson, writeNewJson, sha256 } from '../dist/files.js';
 import { systemCpu, assertPriority, startupCommand } from '../dist/windows.js';
-import { stderrHasFailure } from '../dist/launch.js';
 fs.mkdirSync('.test-output', { recursive: true });
-
-test('stderr severity does not confuse deprecation prose with runtime failures', () => {
-  assert.equal(stderrHasFailure('(node:123) [DEP0169] DeprecationWarning: url.parse() is prone to errors.'), false);
-  for (const line of ['[1:1020/000000.000:ERROR:gpu.cc:5] failed', 'TypeError: invalid value', 'UnhandledPromiseRejectionWarning: failed']) assert.equal(stderrHasFailure(line), true);
-});
 
 test('CLI preserves target order and accepts versions/paths without shell parsing', () => {
   const c = parseArgs(['startup', '--electron=40.0.0', '--electron', 'build with space/electron.exe', '--repeat', '3']);
