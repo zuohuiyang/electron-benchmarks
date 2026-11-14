@@ -58,14 +58,29 @@ export async function environment(): Promise<Record<string, unknown>> {
 
 // Constant script + environment variables avoid injecting CLI paths into PowerShell code.
 export async function startup(action: 'check' | 'install' | 'remove', command: string): Promise<void> {
+  await updateStartupEntry(action, command, 'Software\\Microsoft\\Windows\\CurrentVersion\\Run');
+}
+
+export async function updateStartupEntry(action: 'check' | 'install' | 'remove', command: string, subkey: string): Promise<void> {
   if (action !== 'remove' && command.length > 260) throw Error('Persistent run path is too long for the Windows Run entry (260 characters).');
   const script = `
     $ErrorActionPreference = 'Stop'
-    $key = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'
+    $subkey = $env:BENCH_STARTUP_SUBKEY
+    $key = "HKCU:\\$subkey"
     $name = 'ElectronBenchmarks'
     $command = $env:BENCH_STARTUP_COMMAND
-    $old = Get-ItemPropertyValue -LiteralPath $key -Name $name -ErrorAction SilentlyContinue
-    if ($null -ne $old -and $old -cne $command) {
+    $old = $null
+    $exists = $false
+    $entry = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($subkey)
+    if ($null -ne $entry) {
+      try {
+        $old = $entry.GetValue($name, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+        $exists = $null -ne $old -or $entry.GetValueNames() -contains $name
+      } finally {
+        $entry.Dispose()
+      }
+    }
+    if ($exists -and ($old -isnot [string] -or $old -cne $command)) {
       throw 'Another command occupies HKCU Run/ElectronBenchmarks. The entry was left untouched.'
     }
     switch ($env:BENCH_STARTUP_ACTION) {
@@ -74,11 +89,11 @@ export async function startup(action: 'check' | 'install' | 'remove', command: s
         New-ItemProperty -LiteralPath $key -Name $name -Value $command -PropertyType String -Force | Out-Null
       }
       'remove' {
-        if ($old -ceq $command) { Remove-ItemProperty -LiteralPath $key -Name $name }
+        if ($null -ne $old -and $old -ceq $command) { Remove-ItemProperty -LiteralPath $key -Name $name }
       }
     }
   `;
-  await exec(powershell(), ['-NoProfile', '-NonInteractive', '-Command', script], { env: { ...process.env, BENCH_STARTUP_ACTION: action, BENCH_STARTUP_COMMAND: command }, windowsHide: true, timeout: 15_000 });
+  await exec(powershell(), ['-NoProfile', '-NonInteractive', '-Command', script], { env: { ...process.env, BENCH_STARTUP_ACTION: action, BENCH_STARTUP_COMMAND: command, BENCH_STARTUP_SUBKEY: subkey }, windowsHide: true, timeout: 15_000 });
 }
 export function startupCommand(node: string, cli: string, visible = true): string {
   for (const value of [node, cli]) if (/["\r\n\0%]/.test(value)) throw Error('Cold-run paths cannot contain quotes, newlines or percent signs.');
