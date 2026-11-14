@@ -18,7 +18,7 @@ export interface ReportSummary {
   schemaVersion: 3; kind: 'result'; toolVersion: string; sceneVersion: string; status: Run['status'];
   test: Run['config']['test']; scenarios: readonly Phase[]; time: Run['time'] & { updatedAt: string };
   environment: { os: string | null; build: string | null; architecture: string | null; cpu: { models: string[]; logicalCores: number }; memoryBytes: number | null; virtualized: boolean | null };
-  conditions: { warmupsPerTarget: Partial<Record<Phase, number>>; formalRunsPerTarget: Partial<Record<Phase, number>>; resourceObservation: { settleMs: number; observeMs: number; sampleMs: number } | null };
+  conditions: { warmupsPerTarget: Partial<Record<Phase, number>>; formalRunsPerTarget: Partial<Record<Phase, number>>; resourceObservation: { scenario: 'idle'; settleMs: number; observeMs: number; sampleMs: number } | null };
   outputDirectory: string; baselineTarget: string; dataComplete: boolean;
   completed: number; planned: number; valid: number; failed: number; unexecuted: number;
   error: Failure | null; cleanupError: Failure | null;
@@ -90,7 +90,7 @@ export function report(run: Run): ReportSummary {
     schemaVersion: 3, kind: 'result', toolVersion: run.toolVersion, sceneVersion: 'windows-v1', status: run.status,
     test: run.config.test, scenarios: phases, time: { ...run.time, updatedAt: new Date().toISOString() },
     environment: { os: text(env.os), build: text(env.build), architecture: text(env.architecture), cpu: { models: [...new Set(cpus.map(c => c.model))], logicalCores: cpus.length }, memoryBytes: typeof env.memoryBytes === 'number' ? env.memoryBytes : null, virtualized: typeof controller?.virtualized === 'boolean' ? controller.virtualized : null },
-    conditions: { warmupsPerTarget, formalRunsPerTarget, resourceObservation: phases.some(p => p === 'memory' || p === 'cpu') ? { settleMs: presets.settleMs, observeMs: presets.observeMs, sampleMs: presets.sampleMs } : null },
+    conditions: { warmupsPerTarget, formalRunsPerTarget, resourceObservation: phases.some(p => p === 'memory' || p === 'cpu') ? { scenario: 'idle', settleMs: presets.settleMs, observeMs: presets.observeMs, sampleMs: presets.sampleMs } : null },
     outputDirectory: run.root, baselineTarget: run.targets[0].id, dataComplete,
     completed: formal.length, planned, valid, failed, unexecuted: Math.max(0, planned - formal.length),
     error: run.failure ?? (run.error ? { code: run.status === 'interrupted' ? 'INTERRUPTED' : 'RUN_FAILED', stage: 'measurement', message: run.error } : null),

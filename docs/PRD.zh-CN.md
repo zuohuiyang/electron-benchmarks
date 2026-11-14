@@ -37,8 +37,8 @@ CLI 测试参数与 JSON 的 `test` 字段使用相同的 `测试名:场景` 写
 | `startup:cold` | 重启后首次启动 | 是 |
 | `startup:all` | 先冷后热 | 是 |
 | `all` | 冷启动、热启动、内存、CPU | 是 |
-| `memory` | 单窗口空闲内存 | 否 |
-| `cpu` | 单窗口空闲 CPU | 否 |
+| `memory` / `memory:idle` | 单窗口空闲内存 | 否 |
+| `cpu` / `cpu:idle` | 单窗口空闲 CPU | 否 |
 
 ### 3.2 常用命令
 
@@ -52,10 +52,10 @@ electron-benchmarks startup --electron 40.0.0
 electron-benchmarks startup --electron 40.0.0 --electron 41.0.0 --repeat 10
 
 # 发布版本与本地构建混用
-electron-benchmarks memory --electron 40.0.0 --electron "D:\builds\candidate\electron.exe" --repeat 3
+electron-benchmarks memory:idle --electron 40.0.0 --electron "D:\builds\candidate\electron.exe" --repeat 3
 
 # CPU
-electron-benchmarks cpu --electron 40.0.0 --repeat 3
+electron-benchmarks cpu:idle --electron 40.0.0 --repeat 3
 ```
 
 ### 3.3 参数与默认值

@@ -18,7 +18,7 @@ npm pack
 
 构建脚本优先使用可用的 `cl.exe`，否则通过 Visual Studio Installer 定位工具链。`npm pack` 会触发构建并打包运行依赖所需文件；每次接口变化后须从当前源码重新生成安装包，不能沿用旧测试产物。
 
-CLI 与 JSON 共用 `startup`、`startup:warm`、`startup:cold`、`startup:all`、`all`、`memory` 和 `cpu`。
+CLI 与 JSON 共用 `startup`、`startup:warm`、`startup:cold`、`startup:all`、`all`、`memory` / `memory:idle` 和 `cpu` / `cpu:idle`。
 
 默认结果目录使用本机时间命名为 `YYYYMMDD-HHmm-测试名`，重名追加序号，显式路径冲突则拒绝。根目录只有 `summary.json` 和 `detail/`；状态为 `detail/state.json`，样本按六位执行序号命名，日志集中到 `detail/logs/`。运行 profile 在独立工作目录创建并于结束后清理。
 

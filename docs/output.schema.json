@@ -257,7 +257,9 @@
             "startup:all",
             "all",
             "memory",
-            "cpu"
+            "memory:idle",
+            "cpu",
+            "cpu:idle"
           ]
         },
         "scenarios": {
@@ -425,6 +427,10 @@
                     "sampleMs"
                   ],
                   "properties": {
+                    "scenario": {
+                      "const": "idle",
+                      "description": "Static-window idle workload. Older reports may omit this field."
+                    },
                     "settleMs": {
                       "type": "integer",
                       "minimum": 0

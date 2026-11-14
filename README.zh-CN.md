@@ -66,13 +66,13 @@ electron-benchmarks startup --electron 40.0.0 --electron 41.0.0
 | `startup:cold` | 重启后首次启动 | 0 / 20 |
 | `startup:all` | 先冷启动，再热启动 | 各场景采用各自默认值 |
 | `all` | 冷启动、热启动、空闲内存、空闲 CPU | 各场景采用各自默认值 |
-| `memory` | 空闲内存 | 1 / 10 |
-| `cpu` | 空闲 CPU | 1 / 10 |
+| `memory` / `memory:idle` | 空闲内存 | 1 / 10 |
+| `cpu` / `cpu:idle` | 空闲 CPU | 1 / 10 |
 
 重复 `--electron` 可比较多个目标，第一个目标为基准。`--repeat` 修改每个目标的正式测量次数，不包含预热。例如，对两个版本各测量 3 次空闲内存：
 
 ```powershell
-electron-benchmarks memory --electron 40.0.0 --electron 41.0.0 --repeat 3
+electron-benchmarks memory:idle --electron 40.0.0 --electron 41.0.0 --repeat 3
 ```
 
 版本号须精确，不接受 `latest` 或版本范围。
@@ -90,12 +90,14 @@ electron-benchmarks startup:cold --electron 41.0.0 --repeat 1
 `--electron` 也接受本地可执行文件路径，可用于验证本地构建的优化效果：
 
 ```powershell
-electron-benchmarks cpu --electron "D:\build\electron.exe" --repeat 3
+electron-benchmarks cpu:idle --electron "D:\build\electron.exe" --repeat 3
 ```
 
 本地可执行文件须位于完整、可运行的 Electron 分发目录中。
 
 ### 使用配置文件
+
+静态窗口空闲场景对应 `memory:idle` 和 `cpu:idle`。
 
 将测试配置保存为 `benchmark.json`：
 
