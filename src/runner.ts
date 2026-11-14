@@ -356,6 +356,10 @@ export async function execute(run: Run, userCheck: () => void, continuing = fals
       const key = group(step);
       totals.set(key, (totals.get(key) ?? 0) + 1);
     }
+    const describeStep = (index: number) => {
+      const step = run.steps[index];
+      return `[${index + 1}/${run.steps.length}] ${step.phase} ${run.targets[step.target].id} ${step.warmup ? 'warmup' : 'sample'} ${step.round + 1}/${totals.get(group(step))}`;
+    };
     log(run, `Output: ${run.root}`);
     while (run.next < run.steps.length) {
       check();
@@ -363,15 +367,17 @@ export async function execute(run: Run, userCheck: () => void, continuing = fals
       const step = run.steps[run.next], current = ops.inspect();
       if (current.bootId !== info.bootId) throw Error('Boot changed during execution');
       const target = run.targets[step.target], profile = path.join(run.workRoot, 'profiles', step.id);
-      const progress = `[${run.next + 1}/${run.steps.length}] ${step.phase} ${target.id} ${step.warmup ? 'warmup' : 'sample'} ${step.round + 1}/${totals.get(group(step))}`;
+      const progress = describeStep(run.next);
       if (step.phase === 'cold' && run.lastBoot === current.bootId) await restartNext(run, current.bootId, progress, check, ops);
       fs.cpSync(target.profileTemplate, profile, { recursive: true, force: false, errorOnExist: true });
       log(run, `${progress}: waiting for idle`);
-      const idle = await ops.waitIdle(detailPath(run.root, 'logs', `${step.id}-environment.ndjson`), check);
+      const idle = await ops.waitIdle(detailPath(run.root, 'logs', `${step.id}-environment.ndjson`), check,
+        message => log(run, `${progress}: ${message}`));
       run.pendingStep = step.id;
       run.status = 'running';
       run.lastBoot = current.bootId;
       save(run);
+      log(run, `Idle check complete. Starting ${progress}`);
       const sample = await ops.launch(target, step, profile, check, run.toolRoot);
       sample.raw.environment = idle;
       if (step.phase === 'cold') sample.raw.restart = { number: run.restartCount, bootId: current.bootId };
@@ -383,6 +389,7 @@ export async function execute(run: Run, userCheck: () => void, continuing = fals
       delete run.pendingStep;
       save(run);
       log(run, JSON.stringify(sample.metrics));
+      log(run, run.next < run.steps.length ? `Next: ${describeStep(run.next)}` : 'All samples finished. Finalizing results.');
     }
     run.status = 'complete';
   } catch (error) {

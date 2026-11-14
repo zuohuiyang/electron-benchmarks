@@ -81,6 +81,11 @@ test('continuation samples once on a new boot, then runs warm and resource steps
   info.bootId = 'after';
   assert.equal(await execute(run, () => {}, true, ops), true);
   assert.deepEqual(launches, run.steps.map(step => step.phase));
+  const messages = fs.readFileSync(detailPath(run.root, 'logs', 'events.ndjson'), 'utf8')
+    .trim().split('\n').map(line => JSON.parse(line).message);
+  assert.ok(messages.includes(`Idle check complete. Starting [1/${run.steps.length}] cold target-1 sample 1/1`));
+  assert.ok(messages.includes(`Next: [2/${run.steps.length}] warm target-1 warmup 1/5`));
+  assert.ok(messages.includes('All samples finished. Finalizing results.'));
   assert.equal(launches.filter(phase => phase === 'cold').length, 1);
   assert.deepEqual(registry, ['remove']);
   assert.equal(fs.existsSync(active), false);

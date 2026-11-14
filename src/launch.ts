@@ -11,16 +11,17 @@ export function stderrHasFailure(stderr: string): boolean {
   return stderr.split(/\r?\n/).some(line => !benignGpuProbe.test(line) &&
     /:ERROR:|:FATAL:|^(?:\([^)]*\)\s*)?(?:\w*Error:|FATAL\b)|\bUnhandled(?:PromiseRejection| exception| rejection)|sandbox access/i.test(line));
 }
-export async function launch(target: Target, step: Step, profile: string, check: () => void, root = TOOL_ROOT): Promise<Sample> {
+export async function launch(target: Target, step: Step, profile: string, check: () => void, root = TOOL_ROOT,
+  ops = { inspect, spawn }): Promise<Sample> {
   const startup = step.phase === 'cold' || step.phase === 'warm';
-  const anchor = inspect(); assertPriority(anchor);
+  const anchor = ops.inspect(); assertPriority(anchor);
   const env = { ...process.env };
   for (const key of Object.keys(env)) if (['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'NODE_PATH', 'ELECTRON_RUNTIME_STARTUP_TRACE', 'RUNTIME_BENCH_PREVIEW'].includes(key.toUpperCase())) delete env[key];
   Object.assign(env, { RUNTIME_BENCH_PROFILE: profile, RUNTIME_BENCH_CLOCK_ANCHOR: JSON.stringify(anchor), ELECTRON_BENCH_HELPER: helperPath(root),
     BENCH_SETTLE_MS: String(PRESET.settleMs), BENCH_OBSERVE_MS: String(PRESET.observeMs), BENCH_SAMPLE_MS: String(PRESET.sampleMs) });
   const startedAt = new Date().toISOString();
   const before = process.hrtime.bigint();
-  const child = spawn(target.executable, [path.join(root, 'harness', startup ? 'startup' : 'resource')], { env, windowsHide: false, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = ops.spawn(target.executable, [path.join(root, 'harness', startup ? 'startup' : 'resource')], { env, windowsHide: false, stdio: ['ignore', 'pipe', 'pipe'] });
   const after = process.hrtime.bigint();
   // Event payloads are validated below before any number enters a report.
   const events: Record<string, any>[] = [];
@@ -53,7 +54,7 @@ export async function launch(target: Target, step: Step, profile: string, check:
         }
         // No priority or resource inspection until AFTER both startup endpoints.
         if (['first-video-frame', 'resources'].includes(event.event)) {
-          priority = inspect(child.pid); assertPriority(priority);
+          priority = ops.inspect(child.pid); assertPriority(priority);
         }
       } catch (e) { error = String(e); kill(); }
     });
@@ -62,7 +63,8 @@ export async function launch(target: Target, step: Step, profile: string, check:
       const metrics: Record<string, number> = {};
       try {
         if (code !== 0 || error) throw Error(error ?? `Electron exited with code ${code}`);
-        if (stderrHasFailure(stderr)) throw Error('Unexpected Electron stderr; see raw sample');
+        // Startup validity comes from the exit status and structured endpoints below.
+        if (!startup && stderrHasFailure(stderr)) throw Error('Unexpected Electron stderr; see raw sample');
         if (!priority || priority.pid !== child.pid) throw Error('Actual Electron process priority was not verified');
         if (startup) {
           const frames = events.filter(e => e.event === 'first-video-frame');

@@ -33,18 +33,37 @@ export async function sleep(ms: number, check: () => void): Promise<void> {
   do { check(); await new Promise(resolve => setTimeout(resolve, Math.min(250, Math.max(0, end - Date.now())))); } while (Date.now() < end);
   check();
 }
-export async function waitIdle(logFile: string, check: () => void): Promise<NativeInfo> {
+export async function waitIdle(logFile: string, check: () => void, progress: (message: string) => void): Promise<NativeInfo> {
   try {
     const { stdout } = await exec(powershell(), ['-NoProfile', '-NonInteractive', '-Command', "Get-CimInstance Win32_PerfFormattedData_PerfDisk_PhysicalDisk -OperationTimeoutSec 5 | Select-Object Name,DiskReadBytesPersec,DiskWriteBytesPersec,CurrentDiskQueueLength | ConvertTo-Json -Compress"], { timeout: 15_000, windowsHide: true });
     fs.appendFileSync(logFile, JSON.stringify({ time: new Date().toISOString(), diskActivityBeforeIdle: JSON.parse(stdout || 'null') }) + '\n');
   } catch (error) { fs.appendFileSync(logFile, JSON.stringify({ diskActivityUnavailable: String(error) }) + '\n'); }
-  const started = Date.now(); let previous = inspect(); let stable = 0;
+  return waitForIdleReadings(logFile, check, progress);
+}
+
+export async function waitForIdleReadings(logFile: string, check: () => void, progress: (message: string) => void,
+  ops = { inspect, sleep }): Promise<NativeInfo> {
+  const started = Date.now(); let previous = ops.inspect(); let stable = 0;
+  const recent: number[] = [];
+  let waitingForBoot = previous.uptimeSeconds < PRESET.minimumBootSeconds;
+  const showProgress = (uptimeSeconds: number) => {
+    const remaining = Math.max(0, Math.ceil(PRESET.minimumBootSeconds - uptimeSeconds));
+    const elapsed = Math.min(PRESET.minimumBootSeconds, Math.floor(uptimeSeconds));
+    const boot = waitingForBoot ? `boot wait ${elapsed}/${PRESET.minimumBootSeconds} s elapsed, ${remaining} s remaining; ` : '';
+    waitingForBoot = remaining > 0;
+    const readings = recent.length ? recent.map(cpu => `${cpu.toFixed(1)}%`).join(', ') : 'pending';
+    progress(`${boot}CPU readings ${readings} (limit ≤ ${PRESET.cpuLimit}%); ${PRESET.idleReadings - stable} more consecutive qualifying readings needed`);
+  };
+  showProgress(previous.uptimeSeconds);
   while (Date.now() - started < PRESET.idleTimeoutMs) {
-    await sleep(PRESET.idleIntervalMs, check);
-    const current = inspect(); assertDesktop(current);
+    await ops.sleep(PRESET.idleIntervalMs, check);
+    const current = ops.inspect(); assertDesktop(current);
     const cpu = systemCpu(previous, current); previous = current;
     stable = current.uptimeSeconds >= PRESET.minimumBootSeconds && cpu <= PRESET.cpuLimit ? stable + 1 : 0;
     fs.appendFileSync(logFile, JSON.stringify({ time: new Date().toISOString(), cpuPercentMachine: cpu, uptimeSeconds: current.uptimeSeconds, stable, observerIo: { readBytes: current.readBytes, writeBytes: current.writeBytes } }) + '\n');
+    recent.push(cpu);
+    if (recent.length > PRESET.idleReadings) recent.shift();
+    showProgress(current.uptimeSeconds);
     if (stable >= PRESET.idleReadings) return current;
   }
   throw Error('Environment did not become idle within 20 minutes; no sample was taken.');
