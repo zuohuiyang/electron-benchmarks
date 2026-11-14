@@ -1,9 +1,11 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Config, Phase, Step, TestName } from './model.js';
 import { PRESET } from './model.js';
+import { isWithin } from './files.js';
+import { BenchmarkError } from './errors.js';
 
-export const HELP = `electron-benchmarks 0.2.1 (Windows x64, Node >=22.12)
+export const HELP = `electron-benchmarks 0.2.2 (Windows x64, Node >=22.12)
   electron-benchmarks <test[:scenario]> --electron <exact-version|electron.exe> [options]
   electron-benchmarks --config benchmark.json
 
@@ -16,6 +18,7 @@ export const HELP = `electron-benchmarks 0.2.1 (Windows x64, Node >=22.12)
 
   --electron <value>  Repeat to compare targets; the first is the baseline
   --repeat <n>  Formal runs per target/test; startup 20, resources 10
+  --deploy-to <directory>  Base directory for Electron runtime copies (default: account runtime workspace)
   --out <directory>  New output directory (never overwritten)
   --help  Show help without preparing or running a test
 
@@ -27,6 +30,7 @@ export const HELP = `electron-benchmarks 0.2.1 (Windows x64, Node >=22.12)
   Exit codes: 0 complete, 1 execution/output failure, 2 invalid input, 130 interrupted.
 
   JSON uses the same test string, e.g. {"test":"startup:warm","electrons":["40.0.0"],"repeat":3}.
+  Use {"jobs":[...]} to run complete JSON configurations in order.
   Resource tests: static window, settle 10s, observe 20s, sample every 1s.
   Ctrl+C or detail/STOP in the output directory stops the run.
   Cold tests require interactive confirmation and one restart per cold sample.
@@ -55,7 +59,7 @@ export function parseTest(value: unknown): TestName {
     ? 'Use test[:scenario] with at most one colon.' : `Unknown test: ${JSON.stringify(value)}.`;
   const suggested = typeof value === 'string' && value.length <= 64
     ? names.map(name => ({ name, distance: editDistance(value, name) })).sort((a, b) => a.distance - b.distance)[0] : undefined;
-  throw Error(`${prefix}${suggested && suggested.distance <= 2 ? ` Did you mean ${suggested.name}?` : ''} Supported in 0.2.1: ${Object.keys(TEST_PHASES).join(', ')}.`);
+  throw Error(`${prefix}${suggested && suggested.distance <= 2 ? ` Did you mean ${suggested.name}?` : ''} Supported in 0.2.2: ${Object.keys(TEST_PHASES).join(', ')}.`);
 }
 
 export const phasesFor = (test: TestName): readonly Phase[] => TEST_PHASES[parseTest(test)];
@@ -64,39 +68,66 @@ export function validateConfig(value: unknown): Config {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('Configuration must be an object');
   const c = value as Record<string, unknown>;
   if (Object.hasOwn(c, 'scenario')) throw Error('The scenario field is no longer supported. Use test: "startup:warm".');
-  for (const key of Object.keys(c)) if (!['test', 'electrons', 'repeat', 'out'].includes(key)) throw Error(`Unknown configuration field: ${key}`);
+  for (const key of Object.keys(c)) if (!['test', 'electrons', 'repeat', 'out', 'deployTo'].includes(key)) throw Error(`Unknown configuration field: ${key}`);
   parseTest(c.test);
   if (!Array.isArray(c.electrons) || !c.electrons.length || c.electrons.some(x => typeof x !== 'string' || !x.trim() || /[\r\n\0]/.test(x))) throw Error('electrons must contain version numbers or executable paths');
   if (c.repeat !== undefined && (!Number.isInteger(c.repeat) || Number(c.repeat) < 1 || Number(c.repeat) > 10_000)) throw Error('repeat must be an integer between 1 and 10000');
   if (c.out !== undefined && (typeof c.out !== 'string' || !c.out.trim() || /[\r\n\0]/.test(c.out))) throw Error('out must be a directory path');
+  if (c.deployTo !== undefined && (typeof c.deployTo !== 'string' || !c.deployTo.trim() || /[\r\n\0]/.test(c.deployTo))) throw Error('deployTo must be a directory path');
   return c as unknown as Config;
 }
 
-export function parseArgs(args: string[], cwd = process.cwd()): Config | 'help' {
+export interface JobConfig { jobs: Config[] }
+
+function resolveConfig(value: unknown, base: string): Config {
+  const config = validateConfig(value);
+  return { ...config, electrons: config.electrons.map(x => isVersion(x) ? x : path.resolve(base, x)),
+    ...(config.out ? { out: path.resolve(base, config.out) } : {}),
+    ...(config.deployTo ? { deployTo: path.resolve(base, config.deployTo) } : {}) };
+}
+
+export function validateJobOutputs(jobs: Config[]): void {
+  const outputs: string[] = [];
+  for (const { out } of jobs) {
+    if (!out) continue;
+    if (existsSync(out)) throw new BenchmarkError('OUTPUT_EXISTS', 'input', `Output already exists: ${out}`);
+    if (outputs.some(previous => isWithin(out, previous) || isWithin(previous, out))) {
+      throw Error(`Job output directories must be separate: ${out}`);
+    }
+    outputs.push(out);
+  }
+}
+
+export function parseArgs(args: string[], cwd = process.cwd()): Config | JobConfig | 'help' {
   if (args.includes('--help') || !args.length) return 'help';
   if (args[0] === '--config' || args[0]?.startsWith('--config=')) {
     const inline = args[0].includes('=');
     if (args.length !== (inline ? 1 : 2)) throw Error('--config cannot be combined with test arguments');
     const file = path.resolve(cwd, inline ? args[0].slice(9) : args[1]);
-    const config = validateConfig(JSON.parse(readFileSync(file, 'utf8').replace(/^\uFEFF/, '')));
-    // Relative paths in a config are relative to the config itself, not the shell.
+    const value = JSON.parse(readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
     const base = path.dirname(file);
-    return { ...config, electrons: config.electrons.map(x => isVersion(x) ? x : path.resolve(base, x)),
-      ...(config.out ? { out: path.resolve(base, config.out) } : {}) };
+    if (value && Object.hasOwn(value, 'jobs')) {
+      if (Object.keys(value).length !== 1 || !Array.isArray(value.jobs) || !value.jobs.length) {
+        throw Error('Expected a non-empty jobs array as the only top-level field');
+      }
+      return { jobs: value.jobs.map((job: unknown) => resolveConfig(job, base)) };
+    }
+    return resolveConfig(value, base);
   }
   const c: Record<string, unknown> = { test: args[0], electrons: [] };
   parseTest(c.test);
   for (let i = 1; i < args.length; i++) {
     const [flag, ...inline] = args[i].split('=');
     if (flag === '--scenario') throw Error('--scenario is no longer supported. Use startup:warm as the test.');
-    if (!['--electron', '--repeat', '--out'].includes(flag)) throw Error(`Unknown option: ${flag}`);
+    if (!['--electron', '--repeat', '--out', '--deploy-to'].includes(flag)) throw Error(`Unknown option: ${flag}`);
     const value = inline.length ? inline.join('=') : args[++i];
     if (!value || value.startsWith('--')) throw Error(`Missing value for ${flag}`);
+    if (flag === '--deploy-to' && (!value.trim() || /[\r\n\0]/.test(value))) throw Error('deployTo must be a directory path');
     if (flag === '--electron') (c.electrons as string[]).push(isVersion(value) ? value : path.resolve(cwd, value));
     else {
-      const key = flag.slice(2);
+      const key = flag === '--deploy-to' ? 'deployTo' : flag.slice(2);
       if (key in c) throw Error(`Option specified twice: ${flag}`);
-      c[key] = flag === '--repeat' ? Number(value) : flag === '--out' ? path.resolve(cwd, value) : value;
+      c[key] = flag === '--repeat' ? Number(value) : path.resolve(cwd, value);
     }
   }
   return validateConfig(c);

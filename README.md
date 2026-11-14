@@ -115,6 +115,10 @@ electron-benchmarks --config benchmark.json
 
 Paths in JSON are relative to the configuration file; CLI paths are relative to the working directory. Use `--config` on its own, without test CLI arguments. See the [configuration reference](docs/config.schema.json) for all fields.
 
+Use `--deploy-to <directory>` (JSON: `deployTo`) to run each Electron target from a separate copy on the chosen drive. The copies keep the same paths across restarts. If omitted, the copies use the test account’s local workspace. The harness and profiles keep their usual location, and `--out` controls where reports and logs go. For SSD/HDD comparisons, run one batch per drive with a separate output directory.
+
+For unattended sequential jobs, use a JSON object with a top-level `jobs` array. Each item is a complete configuration with its own `deployTo` and `out` as needed. Start with `--config` and confirm the entire restart sequence once. A failed or interrupted job stops the queue. After execution, Notepad opens `summary.json`. A multi-job summary is stored under `%LOCALAPPDATA%\ElectronBenchmarks\queues\runs` and links to each job report. The CLI prints the full summary path at startup for multi-job runs.
+
 ### Read results
 
 Results are saved under `%LOCALAPPDATA%\ElectronBenchmarks\runs\` by default. Directories are named using local time and the test name, such as `20261031-1530-startup`. Use `--out` to specify a result directory that does not yet exist:

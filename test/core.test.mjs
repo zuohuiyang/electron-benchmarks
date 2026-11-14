@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseArgs, plan, validateConfig } from '../dist/config.js';
+import { parseArgs, plan, validateConfig, validateJobOutputs } from '../dist/config.js';
 import { quantile, difference, resources, nativeCpu } from '../dist/statistics.js';
 import { assertFrozenPlan } from '../dist/runner.js';
 import { summarize } from '../dist/report.js';
@@ -25,9 +25,14 @@ test('CLI preserves target order and accepts versions/paths without shell parsin
 });
 test('JSON config is equivalent to CLI and resolves paths relative to its file', () => {
   const root = fs.mkdtempSync(path.resolve('.test-output/config-'));
-  fs.writeFileSync(path.join(root, 'config.json'), JSON.stringify({ test: 'startup', electrons: ['40.0.0', './build/electron.exe'], repeat: 2 }));
+  fs.writeFileSync(path.join(root, 'config.json'), JSON.stringify({ test: 'startup', electrons: ['40.0.0', './build/electron.exe'], repeat: 2, deployTo: './runtime copies' }));
   const c = parseArgs(['--config', path.join(root, 'config.json')]);
   assert.equal(c.electrons[1], path.join(root, 'build/electron.exe'));
+  assert.equal(c.deployTo, path.join(root, 'runtime copies'));
+  const cli = ['startup', '--electron', '40.0.0', '--electron', './build/electron.exe', '--repeat', '2', '--deploy-to=./runtime copies'];
+  assert.deepEqual(parseArgs(cli, root), c);
+  assert.throws(() => parseArgs([...cli, '--deploy-to', 'another']), /specified twice/);
+  assert.throws(() => parseArgs([...cli.slice(0, -1), '--deploy-to', ' ']), /directory path/);
   assert.deepEqual(plan(c), plan({ test: 'startup', electrons: ['40.0.0', 'any'], repeat: 2 }));
   assert.throws(() => parseArgs(['--config', 'x', '--repeat', '2']));
 });
@@ -38,8 +43,8 @@ test('CLI and JSON share the exact supported test:scenario combinations', () => 
     'startup:all': ['cold', 'warm'], all: ['cold', 'warm', 'memory', 'cpu'], memory: ['memory'], 'memory:idle': ['memory'], cpu: ['cpu'], 'cpu:idle': ['cpu']
   };
   const schema = JSON.parse(fs.readFileSync('docs/config.schema.json', 'utf8'));
-  assert.deepEqual(schema.properties.test.enum, Object.keys(expected));
-  assert.equal(schema.properties.scenario, undefined);
+  assert.deepEqual(schema.$defs.job.properties.test.enum, Object.keys(expected));
+  assert.equal(schema.$defs.job.properties.scenario, undefined);
   const root = fs.mkdtempSync(path.resolve('.test-output/selector-config-'));
   for (const [name, phases] of Object.entries(expected)) {
     const file = path.join(root, name.replace(':', '-') + '.json');
@@ -115,4 +120,21 @@ test('changing a saved config or frozen plan prevents execution', () => {
   assertFrozenPlan(run);
   assert.throws(() => assertFrozenPlan({ ...run, config: { ...run.config, repeat: 2 } }));
   fs.appendFileSync(file, ' '); assert.throws(() => assertFrozenPlan(run));
+});
+
+test('jobs resolve independently and reject nested queues and overlapping outputs', () => {
+  const root = fs.mkdtempSync(path.resolve('.test-output/jobs-'));
+  const file = path.join(root, 'queue.json');
+  const first = { test: 'startup:all', electrons: ['./baseline/electron.exe'], deployTo: './ssd', out: './results/ssd' };
+  const second = { ...first, deployTo: './hdd', out: './results/hdd' };
+  fs.writeFileSync(file, JSON.stringify({ jobs: [first, second] }));
+  const { jobs } = parseArgs(['--config', file]);
+  assert.deepEqual(jobs.map(job => job.deployTo), [path.join(root, 'ssd'), path.join(root, 'hdd')]);
+  assert.equal(jobs[0].electrons[0], path.join(root, 'baseline/electron.exe'));
+  assert.doesNotThrow(() => validateJobOutputs(jobs));
+  assert.throws(() => validateJobOutputs([jobs[0], { ...jobs[1], out: path.join(jobs[0].out, 'nested') }]), /separate/);
+  for (const invalid of [{ jobs: [] }, { jobs: [{ jobs: [first] }] }, { ...first, jobs: [second] }]) {
+    fs.writeFileSync(file, JSON.stringify(invalid));
+    assert.throws(() => parseArgs(['--config', file]));
+  }
 });

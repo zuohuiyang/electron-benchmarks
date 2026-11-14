@@ -14,7 +14,7 @@ test('download failure is bounded and has an actionable structured cause',async(
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { copyTarget, distributionManifest, verifyTarget } from '../dist/targets.js';
+import { copyTarget, distributionManifest, resolveTarget, verifyTarget } from '../dist/targets.js';
 
 test('target preparation copies only runtime assets and pins a verified per-target path', t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cold-target-'));
@@ -32,4 +32,20 @@ test('target preparation copies only runtime assets and pins a verified per-targ
   fs.writeFileSync(original, 'rebuilt after preparation');
   verifyTarget(target);
   assert.equal(fs.readFileSync(target.executable, 'utf8'), 'original binary');
+});
+
+test('a deployment workspace inside the source distribution is rejected', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bench-overlap-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const source = path.join(root, 'build');
+  const executable = path.join(source, 'electron.exe');
+  const deployment = path.join(source, 'deployment');
+  fs.mkdirSync(deployment, { recursive: true });
+  fs.writeFileSync(executable, 'original binary');
+  await assert.rejects(
+    resolveTarget(executable, 0, path.join(root, 'report'), path.join(root, 'work'), deployment),
+    /Deployment workspace and Electron distribution directories must not contain one another/
+  );
+  assert.deepEqual(fs.readdirSync(deployment), []);
+  assert.equal(fs.readFileSync(executable, 'utf8'), 'original binary');
 });
