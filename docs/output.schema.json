@@ -8,9 +8,130 @@
     },
     {
       "$ref": "#/$defs/error"
+    },
+    {
+      "$ref": "#/$defs/queue"
     }
   ],
   "$defs": {
+    "queueError": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "stage",
+            "message"
+          ],
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "stage": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "queue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "kind",
+        "status",
+        "completed",
+        "total",
+        "error",
+        "jobs"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 3
+        },
+        "kind": {
+          "const": "queue"
+        },
+        "status": {
+          "enum": [
+            "running",
+            "complete",
+            "failed",
+            "interrupted"
+          ]
+        },
+        "completed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "error": {
+          "$ref": "#/$defs/queueError"
+        },
+        "jobs": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "test",
+              "deployTo",
+              "out",
+              "status",
+              "summary",
+              "error"
+            ],
+            "properties": {
+              "test": {
+                "type": "string"
+              },
+              "deployTo": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "out": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "pending",
+                  "running",
+                  "complete",
+                  "failed",
+                  "interrupted"
+                ]
+              },
+              "summary": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "error": {
+                "$ref": "#/$defs/queueError"
+              }
+            }
+          }
+        }
+      }
+    },
     "result": {
       "type": "object",
       "additionalProperties": false,
