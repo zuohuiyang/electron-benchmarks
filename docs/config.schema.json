@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "electron-benchmarks 0.2.3 configuration",
+  "title": "electron-benchmarks 0.2.4 configuration",
   "oneOf": [
     {
       "$ref": "#/$defs/job"
