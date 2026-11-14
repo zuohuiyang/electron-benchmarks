@@ -5,7 +5,7 @@ import { phasesFor, plan, validateConfig } from './config.js';
 import { PRESET, type Config, type Run } from './model.js';
 import { atomicJson, readJson, writeNewJson, manifest, verifyManifest, sha256, isWithin } from './files.js';
 import { TOOL_ROOT, localRoot, inspect, environment, assertDesktop, waitIdle, sleep, startup, startupCommand, reboot } from './windows.js';
-import { resolveTarget, verifyTarget } from './targets.js';
+import { copyTarget, resolveTarget, verifyTarget } from './targets.js';
 import { launch } from './launch.js';
 import { report } from './report.js';
 import { BenchmarkError, failure } from './errors.js';
@@ -170,7 +170,11 @@ export async function prepare(config: Config, check: () => void): Promise<Run> {
     if (cold) freezeColdRuntime(run);
     else run.toolManifest = ['dist', 'harness', 'native'].flatMap(dir => manifest(path.join(TOOL_ROOT, dir)).map(entry => ({ ...entry, path: `${dir}/${entry.path}` })));
     for (const target of targets) {
-      check(); log(run, `Preflight ${target.id}: ${target.executable}`);
+      check();
+      log(run, `Copying runtime files for ${target.id}`);
+      copyTarget(target, run.workRoot);
+      check();
+      log(run, `Preflight ${target.id}: ${target.executable}`);
       fs.mkdirSync(target.profileTemplate);
       const sample = await launch(target, { id: `preflight-${target.id}`, phase: 'warm', target: targets.indexOf(target), round: 0, warmup: true }, target.profileTemplate, check, run.toolRoot);
       writeNewJson(detailPath(root, 'logs', `${sample.step.id}.json`), sample);

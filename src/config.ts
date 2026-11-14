@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Config, Phase, Step, TestName } from './model.js';
 import { PRESET } from './model.js';
 
-export const HELP = `electron-benchmarks 0.2.0 (Windows x64, Node >=22.12)
+export const HELP = `electron-benchmarks 0.2.1 (Windows x64, Node >=22.12)
   electron-benchmarks <test[:scenario]> --electron <exact-version|electron.exe> [options]
   electron-benchmarks --config benchmark.json
 
@@ -55,7 +55,7 @@ export function parseTest(value: unknown): TestName {
     ? 'Use test[:scenario] with at most one colon.' : `Unknown test: ${JSON.stringify(value)}.`;
   const suggested = typeof value === 'string' && value.length <= 64
     ? names.map(name => ({ name, distance: editDistance(value, name) })).sort((a, b) => a.distance - b.distance)[0] : undefined;
-  throw Error(`${prefix}${suggested && suggested.distance <= 2 ? ` Did you mean ${suggested.name}?` : ''} Supported in 0.2.0: ${Object.keys(TEST_PHASES).join(', ')}.`);
+  throw Error(`${prefix}${suggested && suggested.distance <= 2 ? ` Did you mean ${suggested.name}?` : ''} Supported in 0.2.1: ${Object.keys(TEST_PHASES).join(', ')}.`);
 }
 
 export const phasesFor = (test: TestName): readonly Phase[] => TEST_PHASES[parseTest(test)];

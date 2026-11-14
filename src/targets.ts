@@ -40,6 +40,20 @@ export function verifyTarget(target: Target): void {
   if (JSON.stringify(distributionManifest(target.executable)) !== JSON.stringify(target.manifest)) throw Error(`Target runtime inputs changed: ${target.executable}`);
 }
 
+export function copyTarget(target: Target, workRoot: string): void {
+  const source = path.dirname(target.executable);
+  const destination = path.join(workRoot, 'targets', target.id);
+  fs.mkdirSync(destination, { recursive: true });
+  for (const { path: relative } of target.manifest) {
+    const output = path.join(destination, relative);
+    fs.mkdirSync(path.dirname(output), { recursive: true });
+    fs.copyFileSync(path.join(source, relative), output, fs.constants.COPYFILE_EXCL);
+  }
+  const executable = path.join(destination, path.basename(target.executable));
+  verifyTarget({ ...target, executable });
+  target.executable = executable;
+}
+
 export async function resolveTarget(input: string, index: number, runRoot: string, workRoot = runRoot): Promise<Target> {
   let executable: string;
   if (isVersion(input)) {
