@@ -62,6 +62,10 @@ Electron releases are automatically downloaded, verified, and cached. When the t
 | Command | Measurement | Default warmups / formal runs per target |
 | --- | --- | --- |
 | `startup` or `startup:warm` | Warm startup time | 5 / 20 |
+
+| `startup:cold` | First launch after Windows restarts | 0 / 20 |
+| `startup:all` | Cold startup followed by warm startup | Per-phase defaults |
+| `all` | Cold startup, warm startup, idle memory, idle CPU | Per-phase defaults |
 | `memory` | Idle memory | 1 / 10 |
 | `cpu` | Idle CPU | 1 / 10 |
 
@@ -72,6 +76,14 @@ electron-benchmarks memory --electron 40.0.0 --electron 41.0.0 --repeat 3
 ```
 
 Use exact version numbers. `latest` and version ranges are not accepted.
+
+### Cold startup
+
+```powershell
+electron-benchmarks startup:cold --electron 41.0.0 --repeat 1
+```
+
+Each cold sample requires a Windows restart. Confirm the total in an interactive terminal before the first restart. Two targets at the default count require 40 restarts. Sign in to the same account after each restart to continue automatically. Follow `summary.json` for progress and the final result. Press Ctrl+C during execution or create `detail/STOP` to cancel.
 
 ### Use a local Electron build
 
@@ -137,7 +149,7 @@ Summaries report P50 (median) and P90. Version differences use P50. Warmups and 
 
 ### Current scope
 
-Version 0.1.0 supports warm startup, idle memory, and idle CPU measurements on Windows. Cold startup, other platforms, diagnostics, and task management are planned for later releases.
+Version 0.2.0 supports cold startup, warm startup, idle memory, and idle CPU on Windows.
 
 ## Documentation
 

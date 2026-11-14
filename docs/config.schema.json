@@ -12,6 +12,9 @@
       "enum": [
         "startup",
         "startup:warm",
+        "startup:cold",
+        "startup:all",
+        "all",
         "memory",
         "cpu"
       ]

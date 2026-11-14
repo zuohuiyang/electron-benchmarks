@@ -15,14 +15,14 @@ function emit(fixture) {
   return result;
 }
 
-for (const [kind, targets] of [['startup', 1], ['startup', 3], ['startup:warm', 1], ['memory', 1], ['memory', 3], ['cpu', 1], ['cpu', 3]]) {
+for (const [kind, targets] of [['startup', 1], ['startup', 3], ['startup:warm', 1], ['startup:cold', 2], ['startup:all', 2], ['all', 2], ['memory', 1], ['memory', 3], ['cpu', 1], ['cpu', 3]]) {
   test(`${kind}/${targets} emits complete machine-readable results without HTML`, () => {
     const fixture = reportFixture(kind, targets), result = emit(fixture);
     assert.equal(result.schemaVersion, 3); assert.equal(result.kind, 'result');
     assert.equal(result.dataComplete, true); assert.equal(resultExitCode(result), 0);
     assert.equal(result.baselineTarget, 'target-1'); assert.equal(result.targets.length, targets);
     assert.equal(result.statistics.primary, 'p50'); assert.equal(result.statistics.comparison, 'p50');
-    assert.equal(result.valid, targets * 3);
+    assert.equal(result.valid, targets * 3 * result.scenarios.length);
     assert.equal(result.unexecuted, 0); assert.equal(result.error, null);
     assert.equal(result.environment.os, fixture.run.environment.os); assert.equal(result.layoutVersion, undefined);
     assert.equal(result.links, undefined);
@@ -121,7 +121,7 @@ test('CLI invalid input produces one parseable JSON document and separate stderr
 test('CLI help names available tests and misspelled selectors return a correction', () => {
   const help = spawnSync(process.execPath, ['bin/electron-benchmarks.js', '--help'], { encoding: 'utf8' });
   assert.equal(help.status, 0);
-  assert.match(help.stdout, /not available in 0.1.0/);
+  assert.match(help.stdout, /one restart per cold sample/);
   assert.doesNotMatch(help.stdout, /--scenario/);
   const child = spawnSync(process.execPath, ['bin/electron-benchmarks.js', 'starup:cold', '--electron', '40.0.0'], { encoding: 'utf8' });
   assert.equal(child.status, 2);
@@ -131,11 +131,11 @@ test('CLI help names available tests and misspelled selectors return a correctio
   assert.doesNotMatch(child.stderr, /Preflight|Reboot in|Preparing Electron/);
 });
 
-for (const selector of ['startup:cold', 'startup:all', 'all', '--continue-cold']) test(`noninteractive ${selector} fails before output creation or environment inspection`, { skip: process.platform !== 'win32' }, () => {
+for (const selector of ['startup:cold', 'startup:all', 'all']) test(`noninteractive ${selector} fails before output creation or environment inspection`, () => {
   // No --out: cold defaults outside the source tree, and must fail before creating it.
   const child = spawnSync(process.execPath, ['bin/electron-benchmarks.js', selector, '--electron', '40.0.0'], { encoding: 'utf8' });
-  assert.equal(child.status, 2); const result = JSON.parse(child.stdout);
-  assert.equal(result.error.code, 'UNSUPPORTED_TEST');
+  assert.equal(child.status, 1); const result = JSON.parse(child.stdout);
+  assert.equal(result.error.code, 'REBOOT_CONSENT_REQUIRED');
   assert.doesNotMatch(child.stderr, /Preflight|Reboot in|Preparing Electron/);
 });
 

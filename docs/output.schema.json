@@ -253,6 +253,9 @@
           "enum": [
             "startup",
             "startup:warm",
+            "startup:cold",
+            "startup:all",
+            "all",
             "memory",
             "cpu"
           ]
@@ -261,6 +264,7 @@
           "type": "array",
           "items": {
             "enum": [
+              "cold",
               "warm",
               "memory",
               "cpu"
@@ -379,6 +383,7 @@
               "type": "object",
               "propertyNames": {
                 "enum": [
+                  "cold",
                   "warm",
                   "memory",
                   "cpu"
@@ -394,6 +399,7 @@
               "type": "object",
               "propertyNames": {
                 "enum": [
+                  "cold",
                   "warm",
                   "memory",
                   "cpu"
@@ -552,6 +558,7 @@
         },
         "phase": {
           "enum": [
+            "cold",
             "warm",
             "memory",
             "cpu"
@@ -630,6 +637,7 @@
         },
         "phase": {
           "enum": [
+            "cold",
             "warm",
             "memory",
             "cpu"

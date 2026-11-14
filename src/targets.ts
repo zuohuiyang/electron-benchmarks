@@ -1,17 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import { downloadArtifact } from '@electron/get';
+import type { downloadArtifact } from '@electron/get';
 import { isVersion } from './config.js';
 import { manifest, isWithin, sha256 } from './files.js';
 import { localRoot, exec, powershell, TOOL_ROOT } from './windows.js';
 import type { Target } from './model.js';
 import { BenchmarkError } from './errors.js';
 
-export async function downloadRelease(version: string, get = downloadArtifact): Promise<string> {
+export async function downloadRelease(version: string, get?: typeof downloadArtifact): Promise<string> {
+  const download = get ?? (await import('@electron/get')).downloadArtifact;
   let last: unknown;
   for (let attempt = 1; attempt <= 2; attempt++) {
-    try { return await get({ version, artifactName: 'electron', platform: 'win32', arch: 'x64' }); }
+    try { return await download({ version, artifactName: 'electron', platform: 'win32', arch: 'x64' }); }
     catch (error) {
       last = error;
       if (attempt < 2) console.error(`Electron ${version} download/verification failed; retrying once (2/2): ${String(error)}`);

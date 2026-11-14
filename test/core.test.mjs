@@ -34,7 +34,8 @@ test('JSON config is equivalent to CLI and resolves paths relative to its file',
 
 test('CLI and JSON share the exact supported test:scenario combinations', () => {
   const expected = {
-    startup: ['warm'], 'startup:warm': ['warm'], memory: ['memory'], cpu: ['cpu']
+    startup: ['warm'], 'startup:warm': ['warm'], 'startup:cold': ['cold'],
+    'startup:all': ['cold', 'warm'], all: ['cold', 'warm', 'memory', 'cpu'], memory: ['memory'], cpu: ['cpu']
   };
   const schema = JSON.parse(fs.readFileSync('docs/config.schema.json', 'utf8'));
   assert.deepEqual(schema.properties.test.enum, Object.keys(expected));
