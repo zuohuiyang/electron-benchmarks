@@ -93,7 +93,7 @@ electron-benchmarks startup:cold --electron 41.0.0 --repeat 1
 electron-benchmarks cpu:idle --electron "D:\build\electron.exe" --repeat 3
 ```
 
-本地可执行文件须位于完整、可运行的 Electron 分发目录中。
+本地可执行文件须位于完整、可运行的 Electron 分发目录中。所有测试都会为每个目标复制一次运行文件，预检、预热和正式测量共用该副本。
 
 ### 使用配置文件
 
@@ -151,7 +151,7 @@ electron-benchmarks startup --electron 40.0.0 --out .\results\startup-check
 
 ### 当前支持范围
 
-0.2.0 支持 Windows 上的冷启动、热启动、空闲内存和空闲 CPU。
+0.2.1 支持 Windows 上的冷启动、热启动、空闲内存和空闲 CPU。
 
 ## 文档
 

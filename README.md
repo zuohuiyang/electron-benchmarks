@@ -93,7 +93,7 @@ Each cold sample requires a Windows restart. Confirm the total in an interactive
 electron-benchmarks cpu:idle --electron "D:\build\electron.exe" --repeat 3
 ```
 
-The executable must be part of a complete, runnable Electron distribution.
+The executable must be part of a complete, runnable Electron distribution. Every run copies each target’s runtime files once and uses that copy for preflight, warmups, and formal measurements.
 
 ### Use a configuration file
 
@@ -151,7 +151,7 @@ Summaries report P50 (median) and P90. Version differences use P50. Warmups and 
 
 ### Current scope
 
-Version 0.2.0 supports cold startup, warm startup, idle memory, and idle CPU on Windows.
+Version 0.2.1 supports cold startup, warm startup, idle memory, and idle CPU on Windows.
 
 ## Documentation
 
