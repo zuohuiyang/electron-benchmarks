@@ -1,6 +1,6 @@
 {
   "name": "electron-benchmarks",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "license": "MIT",
   "description": "Electron benchmarks for AI agents: reproducible Windows measurements and structured results",
   "repository": {
