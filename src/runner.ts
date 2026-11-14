@@ -8,14 +8,14 @@ import { TOOL_ROOT, localRoot, inspect, environment, assertDesktop, waitIdle, sl
 import { copyTarget, resolveTarget, verifyTarget } from './targets.js';
 import { launch } from './launch.js';
 import { report } from './report.js';
-import { BenchmarkError, failure } from './errors.js';
+import { BenchmarkError, failure, type Failure } from './errors.js';
 import { detailPath, createOutputRoot, createWorkRoot, cleanupWorkRoot, runTime } from './layout.js';
 export { outputRoot } from './layout.js';
 
-const activePath = (): string => path.join(localRoot(), 'active.json');
+export const activePath = (): string => path.join(localRoot(), 'active.json');
 const save = (run: Run) => atomicJson(detailPath(run.root, 'state.json'), run);
 interface Controller { pid: number; creation: string }
-interface Active extends Controller { root: string; cold?: boolean }
+interface Active extends Controller { root: string; cold?: boolean; queue?: string }
 
 function controllerAlive(owner: Controller, inspectProcess = inspect): boolean {
   try { return inspectProcess(owner.pid).creationFileTime100ns === owner.creation; }
@@ -27,6 +27,8 @@ function log(run: Run, message: string): void {
 }
 function frozenPlan(run: Run) {
   return { schemaVersion: run.schemaVersion, toolVersion: run.toolVersion, root: run.root, workRoot: run.workRoot,
+    ...(run.queue ? { queue: run.queue } : {}),
+    ...(run.deployRoot ? { deployRoot: run.deployRoot } : {}),
     time: run.time, presets: run.presets, config: run.config, targets: run.targets, steps: run.steps,
     userSid: run.userSid, nodePath: run.nodePath, nodeSha256: run.nodeSha256, toolRoot: run.toolRoot, toolManifest: run.toolManifest };
 }
@@ -34,14 +36,19 @@ export function assertFrozenPlan(run: Run): void {
   const file = detailPath(run.root, 'plan.json');
   if (!run.planSha256 || sha256(file) !== run.planSha256 || JSON.stringify(readJson(file)) !== JSON.stringify(frozenPlan(run))) throw Error('Frozen test configuration or plan changed');
 }
-function clearActive(root: string): void {
+export function clearActive(root: string): void {
   if (fs.existsSync(activePath()) && readJson<Active>(activePath()).root === root) fs.unlinkSync(activePath());
 }
-async function claim(root: string, cold: boolean): Promise<void> {
+export async function claim(root: string, cold: boolean, queue?: string): Promise<void> {
   fs.mkdirSync(localRoot(), { recursive: true });
   const info = inspect();
   if (fs.existsSync(activePath())) {
     const old = readJson<Active>(activePath());
+    if (old.queue === queue && queue && old.pid === process.pid && old.creation === info.creationFileTime100ns) {
+      atomicJson(activePath(), { root, pid: process.pid, creation: info.creationFileTime100ns, cold, queue });
+      return;
+    }
+    if (old.queue) throw new BenchmarkError('RUN_BUSY', 'prepare', `A job queue owns this account: ${old.queue}`);
     if (controllerAlive(old)) throw new BenchmarkError('RUN_BUSY', 'prepare', `Another benchmark is running: ${old.root}`);
     const current = detailPath(old.root, 'state.json');
     const stateFile = fs.existsSync(current) ? current : path.join(old.root, 'run.json');
@@ -67,23 +74,40 @@ async function claim(root: string, cold: boolean): Promise<void> {
         previous.failure = { code: 'INTERRUPTED', stage: 'measurement', message: previous.error };
       }
       atomicJson(stateFile, previous);
-      if (previous.schemaVersion === 2) { report(previous); cleanupWorkRoot(previous); }
+      if (previous.schemaVersion === 2) { report(previous); cleanupRunRoots(previous); }
     }
     fs.unlinkSync(activePath());
   }
-  writeNewJson(activePath(), { root, pid: process.pid, creation: info.creationFileTime100ns, cold });
+  writeNewJson(activePath(), { root, pid: process.pid, creation: info.creationFileTime100ns, cold, queue });
 }
 async function finalize(run: Run, changeStartup = startup): Promise<void> {
   save(run);
   await cleanup(run, changeStartup);
   save(run);
   report(run);
-  if (!run.startupCommand) clearActive(run.root);
+  if (!run.startupCommand && !run.queue) clearActive(run.root);
+}
+
+export async function abandonQueueRun(run: Run, error: Failure | null): Promise<void> {
+  if (!isTerminal(run) && error) {
+    run.status = error.code === 'INTERRUPTED' ? 'interrupted' : 'failed';
+    run.failure = error;
+    run.error = error.message;
+  }
+  await finalize(run);
+}
+
+function cleanupRunRoots(run: Pick<Run, 'workRoot' | 'deployRoot' | 'config'>): void {
+  try {
+    if (run.deployRoot && run.config.deployTo) cleanupWorkRoot({ workRoot: run.deployRoot }, run.config.deployTo);
+  } finally {
+    cleanupWorkRoot(run);
+  }
 }
 
 async function cleanup(run: Run, changeStartup: typeof startup): Promise<void> {
   const errors: string[] = [];
-  if (run.startupCommand) {
+  if (run.startupCommand && !run.queue) {
     try {
       await changeStartup('remove', run.startupCommand);
       delete run.startupCommand;
@@ -91,15 +115,15 @@ async function cleanup(run: Run, changeStartup: typeof startup): Promise<void> {
       errors.push(`Could not remove HKCU Run/ElectronBenchmarks (${run.startupCommand}): ${String(error)}`);
     }
   }
-  if (!run.startupCommand) {
-    try { cleanupWorkRoot(run); }
-    catch (error) { errors.push(`Could not clean runtime workspace ${run.workRoot}: ${String(error)}`); }
+  if (!run.startupCommand || run.queue) {
+    try { cleanupRunRoots(run); }
+    catch (error) { errors.push(`Could not clean runtime workspace: ${String(error)}`); }
   }
   if (errors.length) run.cleanupError = errors.join('\n');
   else delete run.cleanupError;
 }
 
-function freezeColdRuntime(run: Run): void {
+export function freezeColdRuntime(run: Pick<Run, 'nodePath' | 'nodeSha256' | 'workRoot' | 'toolRoot' | 'toolManifest'>): void {
   // Cache the pinned executable separately so Windows can clean the workspace
   // while that executable is still running.
   const cache = path.join(localRoot(), 'node', run.nodeSha256.slice(0, 16));
@@ -113,7 +137,7 @@ function freezeColdRuntime(run: Run): void {
   if (sha256(run.nodePath) !== run.nodeSha256) throw Error('Pinned Node runtime changed');
 
   run.toolRoot = path.join(run.workRoot, 'tool');
-  for (const name of ['package.json', 'bin', 'dist', 'harness', 'native/windows-helper.exe']) {
+  for (const name of ['package.json', 'bin', 'dist', 'harness', 'native/windows-helper.exe', 'scripts/extract.ps1']) {
     const destination = path.join(run.toolRoot, name);
     fs.mkdirSync(path.dirname(destination), { recursive: true });
     fs.cpSync(path.join(TOOL_ROOT, name), destination, { recursive: true, dereference: true });
@@ -127,6 +151,9 @@ async function confirmCold(run: Run): Promise<void> {
     log(run, `${phase}: ${count / run.targets.length} formal samples per target`);
   }
   log(run, `${run.steps.filter(step => step.phase === 'cold').length} Windows restarts. Sign in after each restart unless automatic sign-in is configured.`);
+  await confirmRestart();
+}
+export async function confirmRestart(): Promise<void> {
   const prompt = createInterface({ input: process.stdin, output: process.stderr });
   const abort = new AbortController();
   prompt.once('close', abortQuestion);
@@ -145,7 +172,11 @@ async function confirmCold(run: Run): Promise<void> {
 
   function abortQuestion(): void { abort.abort(); }
 }
-export async function prepare(config: Config, check: () => void): Promise<Run> {
+export interface QueueRuntime extends Pick<Run, 'toolRoot' | 'toolManifest' | 'nodePath' | 'nodeSha256' | 'startupCommand'> {
+  queue: string;
+}
+
+export async function prepare(config: Config, check: () => void, runtime?: QueueRuntime): Promise<Run> {
   validateConfig(config);
   const cold = phasesFor(config.test).includes('cold');
   if (config.out && fs.existsSync(config.out)) throw new BenchmarkError('OUTPUT_EXISTS', 'input', `Output already exists: ${config.out}`);
@@ -155,24 +186,35 @@ export async function prepare(config: Config, check: () => void): Promise<Run> {
   const started = new Date();
   const root = createOutputRoot(config, localRoot(), started);
   fs.mkdirSync(detailPath(root)); fs.mkdirSync(detailPath(root, 'samples')); fs.mkdirSync(detailPath(root, 'logs'));
-  await claim(root, cold);
-  let run: Run | undefined, workRoot: string | undefined;
+  await claim(root, cold, runtime?.queue);
+  let run: Run | undefined, workRoot: string | undefined, deployRoot: string | undefined;
   try {
     workRoot = createWorkRoot();
     if (isWithin(workRoot, root) || isWithin(root, workRoot)) throw Error('Results and runtime workspace must be separate.');
+    if (config.deployTo) {
+      deployRoot = createWorkRoot(config.deployTo);
+      const deployment = fs.realpathSync(deployRoot);
+      const output = fs.realpathSync(root);
+      if (isWithin(deployment, output) || isWithin(output, deployment)) throw Error('Results and deployment workspace must be separate.');
+    }
     fs.mkdirSync(path.join(workRoot, 'profiles'));
     const targets = [];
-    for (const [index, input] of config.electrons.entries()) { check(); targets.push(await resolveTarget(input, index, root, workRoot)); }
+    for (const [index, input] of config.electrons.entries()) { check(); targets.push(await resolveTarget(input, index, root, workRoot, deployRoot)); }
     run = { schemaVersion: 2, toolVersion: readJson<{ version: string }>(path.join(TOOL_ROOT, 'package.json')).version,
-      root, workRoot, time: runTime(started), presets: PRESET, config, targets, steps: plan(config), next: 0, status: 'prepared',
+      root, workRoot, deployRoot, time: runTime(started), presets: PRESET, config, targets, steps: plan(config), next: 0, status: 'prepared',
       lastBoot: native.bootId, userSid: native.userSid, nodePath: process.execPath, nodeSha256: sha256(process.execPath),
       toolRoot: TOOL_ROOT, toolManifest: [], environment: env, restartCount: 0 };
-    if (cold) freezeColdRuntime(run);
+    if (runtime) {
+      Object.assign(run, runtime);
+      if (runtime.startupCommand) verifyManifest(run.toolRoot, run.toolManifest);
+      if (sha256(run.nodePath) !== run.nodeSha256) throw Error('Pinned Node runtime changed');
+    }
+    else if (cold) freezeColdRuntime(run);
     else run.toolManifest = ['dist', 'harness', 'native'].flatMap(dir => manifest(path.join(TOOL_ROOT, dir)).map(entry => ({ ...entry, path: `${dir}/${entry.path}` })));
     for (const target of targets) {
       check();
       log(run, `Copying runtime files for ${target.id}`);
-      copyTarget(target, run.workRoot);
+      copyTarget(target, run.deployRoot ?? run.workRoot);
       check();
       log(run, `Preflight ${target.id}: ${target.executable}`);
       fs.mkdirSync(target.profileTemplate);
@@ -188,7 +230,7 @@ export async function prepare(config: Config, check: () => void): Promise<Run> {
     writeNewJson(detailPath(root, 'plan.json'), frozenPlan(run));
     run.planSha256 = sha256(detailPath(root, 'plan.json')); save(run);
     log(run, `Baseline: ${targets[0].id}\nTargets: ${targets.map(t => `${t.id}=${t.version}`).join(', ')}\nOutput: ${root}`);
-    if (cold) {
+    if (cold && !runtime) {
       const command = startupCommand(run.nodePath, path.join(run.toolRoot, 'bin', 'electron-benchmarks.js'));
       await startup('check', command);
       await confirmCold(run);
@@ -205,8 +247,12 @@ export async function prepare(config: Config, check: () => void): Promise<Run> {
       await finalize(run);
       return run;
     }
-    if (workRoot) cleanupWorkRoot({ workRoot });
-    clearActive(root); throw error;
+    try {
+      if (workRoot) cleanupRunRoots({ workRoot, deployRoot, config });
+    } finally {
+      if (!runtime) clearActive(root);
+    }
+    throw error;
   }
 }
 async function verifyInputs(run: Run): Promise<void> {
@@ -218,6 +264,7 @@ async function verifyInputs(run: Run): Promise<void> {
 export function loadColdRun(): Run | undefined {
   if (!fs.existsSync(activePath())) return;
   const active = readJson<Active>(activePath());
+  if (active.queue) return;
   const run = readJson<Run>(detailPath(active.root, 'state.json'));
   if (!run.startupCommand || run.root !== active.root || !runtimePathsMatch(run)) return;
   return run;
@@ -227,15 +274,16 @@ function isTerminal(run: Run): boolean {
   return run.status === 'complete' || run.status === 'failed' || run.status === 'interrupted';
 }
 
-function runtimePathsMatch(run: Run): boolean {
+export function runtimePathsMatch(run: Pick<Run, 'toolRoot' | 'nodePath' | 'startupCommand'>): boolean {
+  const cli = path.join(TOOL_ROOT, 'bin', 'electron-benchmarks.js');
   return path.relative(run.toolRoot, TOOL_ROOT) === '' && path.relative(run.nodePath, process.execPath) === '' &&
-    run.startupCommand === startupCommand(process.execPath, path.join(TOOL_ROOT, 'bin', 'electron-benchmarks.js'));
+    (run.startupCommand === startupCommand(process.execPath, cli) || run.startupCommand === startupCommand(process.execPath, cli, false));
 }
 
-async function restartNext(run: Run, boot: string, check: () => void, ops: typeof system): Promise<never> {
+async function restartNext(run: Run, boot: string, progress: string, check: () => void, ops: typeof system): Promise<never> {
   const total = run.steps.filter(step => step.phase === 'cold').length;
   if (run.restartCount >= total) throw Error('Restart budget exhausted');
-  log(run, `Restart in 15 seconds (${run.restartCount + 1}/${total}). Ctrl+C or ${detailPath(run.root, 'STOP')} stops it.`);
+  log(run, `${progress}: restarting in 15 seconds (${run.restartCount + 1}/${total}). Ctrl+C or ${detailPath(run.root, 'STOP')} stops it.`);
   await ops.sleep(PRESET.restartCountdownMs, check);
   ops.assertDesktop(ops.inspect());
   run.restartCount++;
@@ -264,7 +312,7 @@ export async function execute(run: Run, userCheck: () => void, continuing = fals
       const active = readJson<Active>(activePath());
       if (active.root !== run.root || info.userSid !== run.userSid || !ops.runtimePathsMatch(run)) return false;
       if (controllerAlive(active, ops.inspect)) return false;
-      const stop = fs.existsSync(detailPath(run.root, 'STOP'));
+      const stop = fs.existsSync(detailPath(run.root, 'STOP')) || Boolean(run.queue && fs.existsSync(path.join(run.queue, 'STOP')));
       if (run.status === 'waiting-reboot' && run.lastBoot === info.bootId && !stop) return false;
       // A durable per-restart claim distinguishes a duplicate controller from
       // an abandoned attempt. Only the first controller may sample.
@@ -301,15 +349,24 @@ export async function execute(run: Run, userCheck: () => void, continuing = fals
         throw Error('Unexpected controller exit or invalid restart state');
       }
     } else if (run.lastBoot !== info.bootId) throw Error('Initial boot changed');
+    log(run, `Baseline: ${run.targets[0].id}; targets: ${run.targets.map(target => `${target.id}=${target.version}`).join(', ')}`);
+    const totals = new Map<string, number>();
+    const group = (step: Run['steps'][number]) => `${step.phase}/${step.target}/${step.warmup}`;
+    for (const step of run.steps) {
+      const key = group(step);
+      totals.set(key, (totals.get(key) ?? 0) + 1);
+    }
+    log(run, `Output: ${run.root}`);
     while (run.next < run.steps.length) {
       check();
       assertFrozenPlan(run);
       const step = run.steps[run.next], current = ops.inspect();
       if (current.bootId !== info.bootId) throw Error('Boot changed during execution');
-      if (step.phase === 'cold' && run.lastBoot === current.bootId) await restartNext(run, current.bootId, check, ops);
       const target = run.targets[step.target], profile = path.join(run.workRoot, 'profiles', step.id);
+      const progress = `[${run.next + 1}/${run.steps.length}] ${step.phase} ${target.id} ${step.warmup ? 'warmup' : 'sample'} ${step.round + 1}/${totals.get(group(step))}`;
+      if (step.phase === 'cold' && run.lastBoot === current.bootId) await restartNext(run, current.bootId, progress, check, ops);
       fs.cpSync(target.profileTemplate, profile, { recursive: true, force: false, errorOnExist: true });
-      log(run, `[${run.next + 1}/${run.steps.length}] ${step.phase} ${target.id} ${step.warmup ? 'warmup' : 'formal'}: waiting for idle`);
+      log(run, `${progress}: waiting for idle`);
       const idle = await ops.waitIdle(detailPath(run.root, 'logs', `${step.id}-environment.ndjson`), check);
       run.pendingStep = step.id;
       run.status = 'running';

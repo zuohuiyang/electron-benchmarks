@@ -115,6 +115,12 @@ electron-benchmarks --config benchmark.json
 
 JSON 中的相对路径以配置文件目录为基准，CLI 中的相对路径以当前工作目录为基准。`--config` 单独使用，不与测试 CLI 参数混用。完整字段见[配置参考](docs/config.schema.json)。
 
+用 `--deploy-to <目录>`（JSON 字段 `deployTo`）指定 Electron 副本的部署根目录。每个目标从各自的副本启动，同一批内跨重启沿用部署路径。省略时使用测试账户的本地工作区。测试程序、视频和 profile 沿用默认位置，报告和日志由 `--out` 指定。对比 SSD 和 HDD 时，每块盘各跑一批，并使用独立结果目录。
+
+用顶层 `jobs` 数组无人值守地依次运行多项测试。每项都是完整配置，可分别指定 `deployTo` 和 `out`。通过 `--config` 启动后只确认一次重启计划，任一任务失败或中止即停止队列。结束时记事本打开 `summary.json`。多项任务的总报告保存在 `%LOCALAPPDATA%\ElectronBenchmarks\queues\runs` 下，启动时会打印完整路径，总报告列出各任务的详细报告路径。
+
+控制台会显示当前任务、部署目录，以及每个版本的样本序号。冷启动重启并登录后，Windows 会打开新的 Electron Benchmarks 控制台并继续显示进度。
+
 ### 读取结果
 
 默认结果保存在 `%LOCALAPPDATA%\ElectronBenchmarks\runs\` 下，目录按本机时间和测试项命名，如 `20261031-1530-startup`。也可通过 `--out` 指定一个尚不存在的结果目录：

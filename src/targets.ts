@@ -54,24 +54,28 @@ export function copyTarget(target: Target, workRoot: string): void {
   target.executable = executable;
 }
 
-export async function resolveTarget(input: string, index: number, runRoot: string, workRoot = runRoot): Promise<Target> {
+export async function cacheRelease(input: string): Promise<string> {
+  if (Number(input.split('.')[0]) < 22) throw Error('Electron >=22 is required by the fixed scenario APIs.');
+  const cache = path.join(localRoot(), 'versions', input, 'win32-x64');
+  // A completion marker prevents an interrupted unzip from being used as a target.
+  if (!fs.existsSync(path.join(cache, '.complete'))) {
+    console.error(`Preparing Electron ${input}...`);
+    const zip = await downloadRelease(input);
+    const staging = `${cache}.${randomUUID()}.partial`;
+    fs.mkdirSync(staging, { recursive: true });
+    await exec(powershell(), ['-NoProfile', '-NonInteractive', '-File', path.join(TOOL_ROOT, 'scripts/extract.ps1')], { env: { ...process.env, BENCH_ZIP: zip, BENCH_DESTINATION: staging }, windowsHide: true, timeout: 300_000 });
+    fs.writeFileSync(path.join(staging, '.complete'), input);
+    fs.mkdirSync(path.dirname(cache), { recursive: true });
+    if (fs.existsSync(cache)) throw Error(`Incomplete download cache exists; remove it before retrying: ${cache}`);
+    fs.renameSync(staging, cache);
+  }
+  return path.join(cache, 'electron.exe');
+}
+
+export async function resolveTarget(input: string, index: number, runRoot: string, workRoot = runRoot, deployRoot = workRoot): Promise<Target> {
   let executable: string;
   if (isVersion(input)) {
-    if (Number(input.split('.')[0]) < 22) throw Error('Electron >=22 is required by the fixed scenario APIs.');
-    const cache = path.join(localRoot(), 'versions', input, 'win32-x64');
-    executable = path.join(cache, 'electron.exe');
-    // A completion marker prevents an interrupted unzip from being used as a target.
-    if (!fs.existsSync(path.join(cache, '.complete'))) {
-      console.error(`Preparing Electron ${input}...`);
-      const zip = await downloadRelease(input);
-      const staging = `${cache}.${randomUUID()}.partial`;
-      fs.mkdirSync(staging, { recursive: true });
-      await exec(powershell(), ['-NoProfile', '-NonInteractive', '-File', path.join(TOOL_ROOT, 'scripts/extract.ps1')], { env: { ...process.env, BENCH_ZIP: zip, BENCH_DESTINATION: staging }, windowsHide: true, timeout: 300_000 });
-      fs.writeFileSync(path.join(staging, '.complete'), input);
-      fs.mkdirSync(path.dirname(cache), { recursive: true });
-      if (fs.existsSync(cache)) throw Error(`Incomplete download cache exists; remove it before retrying: ${cache}`);
-      fs.renameSync(staging, cache);
-    }
+    executable = await cacheRelease(input);
   } else {
     executable = path.resolve(input);
     if (!fs.existsSync(executable) || !fs.statSync(executable).isFile() || path.extname(executable).toLowerCase() !== '.exe') throw Error(`Expected an Electron executable path or exact version: ${input}`);
@@ -79,6 +83,9 @@ export async function resolveTarget(input: string, index: number, runRoot: strin
   const root = path.dirname(executable);
   if (isWithin(runRoot, root) || isWithin(root, runRoot)) throw Error('Output and Electron distribution directories must not contain one another.');
   if (isWithin(workRoot, root) || isWithin(root, workRoot)) throw Error('Workspace and Electron distribution directories must not contain one another.');
+  const actualRoot = fs.realpathSync(root);
+  const actualDeployRoot = fs.realpathSync(deployRoot);
+  if (isWithin(actualDeployRoot, actualRoot) || isWithin(actualRoot, actualDeployRoot)) throw Error('Deployment workspace and Electron distribution directories must not contain one another.');
   // Fingerprint the full distribution (not just its launcher).
   const inputs = distributionManifest(executable);
   const identity = createHash('sha256').update(JSON.stringify(inputs)).digest('hex');

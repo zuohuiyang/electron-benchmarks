@@ -80,9 +80,10 @@ export async function startup(action: 'check' | 'install' | 'remove', command: s
   `;
   await exec(powershell(), ['-NoProfile', '-NonInteractive', '-Command', script], { env: { ...process.env, BENCH_STARTUP_ACTION: action, BENCH_STARTUP_COMMAND: command }, windowsHide: true, timeout: 15_000 });
 }
-export function startupCommand(node: string, cli: string): string {
+export function startupCommand(node: string, cli: string, visible = true): string {
   for (const value of [node, cli]) if (/["\r\n\0%]/.test(value)) throw Error('Cold-run paths cannot contain quotes, newlines or percent signs.');
-  return `"${node}" "${cli}" --continue-cold`;
+  const command = `"${node}" "${cli}" --continue-cold`;
+  return visible ? `cmd.exe /d /v:off /c start "Electron Benchmarks" ${command}` : command;
 }
 export async function reboot(): Promise<void> {
   await exec(path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'shutdown.exe'), ['/r', '/t', '0'], { windowsHide: true, timeout: 10_000 });

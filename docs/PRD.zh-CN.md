@@ -1,8 +1,8 @@
 # electron-benchmarks PRD / 简明使用说明
 
-版本：0.2.1 · 更新日期：2026-11-14
+版本：0.2.3 · 更新日期：2026-11-14
 
-本文介绍 0.2.1 的安装、常用输入输出和使用方式。取消、异常处理及详细字段说明见[详细用户说明](USER-GUIDE.zh-CN.md)，实现原理见[技术方案](TECHNICAL-DESIGN.zh-CN.md)。
+本文介绍 0.2.3 的安装、常用输入输出和使用方式。取消、异常处理及详细字段说明见[详细用户说明](USER-GUIDE.zh-CN.md)，实现原理见[技术方案](TECHNICAL-DESIGN.zh-CN.md)。
 
 本版提供冷启动、热启动、空闲内存和空闲 CPU 测试。
 
@@ -64,6 +64,7 @@ electron-benchmarks cpu:idle --electron 40.0.0 --repeat 3
 | --- | --- | --- |
 | `--electron` | 无，必填 | 版本号或完整本地构建中的 `electron.exe` 路径；可重复 |
 | `--repeat` | 热启动 20 次；内存、CPU 各 10 次 | 每个目标、每项测试的正式测量次数，不含预热 |
+| `--deploy-to` | 当前账户的本地工作区 | 指定 Electron 副本的部署根目录，JSON 字段为 `deployTo` |
 | `--out` | 当前账户的 `%LOCALAPPDATA%\ElectronBenchmarks\runs\YYYYMMDD-HHmm-测试名` | 指定结果目录 |
 | `--config` | 不读取配置文件 | 从 JSON 读取完整测试配置 |
 | `--help` | 不启用 | 显示用法 |

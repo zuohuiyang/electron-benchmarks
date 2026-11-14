@@ -7,7 +7,7 @@ import { detailPath } from '../dist/layout.js';
 import { sha256 } from '../dist/files.js';
 import { reportFixture } from './report-fixture.mjs';
 
-function coldRun(t, selector = 'startup:cold') {
+function coldRun(t, selector = 'startup:cold', deploy = false) {
   const { run, samples } = reportFixture(selector, 1, 1);
   const base = path.join(run.root, 'local');
   const previousLocal = process.env.LOCALAPPDATA;
@@ -22,8 +22,12 @@ function coldRun(t, selector = 'startup:cold') {
   run.toolRoot = path.join(run.workRoot, 'tool');
   run.nodePath = process.execPath;
   run.nodeSha256 = sha256(process.execPath);
-  const dist = path.join(run.root, 'electron');
-  fs.mkdirSync(dist);
+  if (deploy) {
+    run.config.deployTo = path.join(run.root, 'external');
+    run.deployRoot = path.join(run.config.deployTo, 'w', '11223344');
+  }
+  const dist = deploy ? path.join(run.deployRoot, 'targets', 'target-1') : path.join(run.root, 'electron');
+  fs.mkdirSync(dist, { recursive: true });
   for (const target of run.targets) {
     target.executable = path.join(dist, 'electron.exe');
     fs.writeFileSync(target.executable, 'test fixture');
@@ -36,7 +40,8 @@ function coldRun(t, selector = 'startup:cold') {
   const { schemaVersion, toolVersion, root, workRoot, time, presets, config, targets, steps,
     userSid, nodePath, nodeSha256, toolRoot, toolManifest } = run;
   const planFile = detailPath(run.root, 'plan.json');
-  fs.writeFileSync(planFile, JSON.stringify({ schemaVersion, toolVersion, root, workRoot, time,
+  fs.writeFileSync(planFile, JSON.stringify({ schemaVersion, toolVersion, root, workRoot,
+    ...(deploy ? { deployRoot: run.deployRoot } : {}), time,
     presets, config, targets, steps, userSid, nodePath, nodeSha256, toolRoot, toolManifest }));
   Object.assign(run, { next: 0, status: 'waiting-reboot', lastBoot: 'before', restartCount: 1, startupCommand: 'fixture' });
   run.planSha256 = sha256(planFile);
@@ -55,7 +60,11 @@ function coldRun(t, selector = 'startup:cold') {
     waitIdle: async (_file, check) => { check(); return info; },
     sleep: async (_ms, check) => check(),
     reboot: async () => assert.fail('Unexpected reboot'),
-    launch: async (_target, step) => {
+    launch: async (target, step, profile) => {
+      if (deploy) {
+        assert.equal(target.executable, path.join(dist, 'electron.exe'));
+        assert.equal(path.dirname(profile), path.join(run.workRoot, 'profiles'));
+      }
       launches.push(step.phase);
       return samples.find(sample => sample.step.id === step.id);
     },
@@ -65,7 +74,7 @@ function coldRun(t, selector = 'startup:cold') {
 }
 
 test('continuation samples once on a new boot, then runs warm and resource steps on that boot', async t => {
-  const { run, info, ops, active, launches, registry } = coldRun(t, 'all');
+  const { run, info, ops, active, launches, registry } = coldRun(t, 'all', true);
   info.bootId = 'before';
   assert.equal(await execute(run, () => {}, true, ops), false);
   assert.deepEqual(launches, []);
@@ -78,6 +87,9 @@ test('continuation samples once on a new boot, then runs warm and resource steps
   const result = JSON.parse(fs.readFileSync(path.join(run.root, 'summary.json')));
   assert.equal(result.status, 'complete');
   assert.equal(result.dataComplete, true);
+  assert.equal(fs.existsSync(run.deployRoot), false);
+  assert.equal(fs.existsSync(run.workRoot), false);
+  assert.equal(fs.existsSync(run.config.deployTo), true);
 });
 
 test('a live continuation keeps ownership; an abandoned claim honors STOP and cleans up', async t => {
