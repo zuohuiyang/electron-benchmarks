@@ -11,19 +11,6 @@ Electron Benchmarks 帮助开发者衡量 Electron 性能、验证优化效果�
 - **统计与复核**：自动预热、多轮测量，汇总 P50/P90，并保存环境信息和逐次样本。
 - **Agent 友好**：支持 JSON 配置与结果输出，提供明确的状态、错误和数据完整性信息。
 
-## 结果示例
-
-终端显示进度与简短摘要，同时输出供脚本或 Agent 读取的 JSON 结果。以下为两个版本热启动对比的摘要示意，数值仅用于展示，不代表实际性能：
-
-```text
-complete: 40/40 valid formal samples; 0 failed, 0 unexecuted
-warm target-1 appReadyMs: P50=120.000 ms
-warm target-2 appReadyMs: P50=114.000 ms; delta=-5.00%
-Summary: C:\benchmarks\startup-comparison\summary.json
-```
-
-`target-1`、`target-2` 对应输入顺序，第一个目标为基准。此例中，第二个目标的启动时间 P50 比基准低 5%。
-
 ## 安装
 
 运行环境：
@@ -33,7 +20,7 @@ Summary: C:\benchmarks\startup-comparison\summary.json
 - 待测 Electron >=22。
 
 ```powershell
-npm install --global electron-benchmarks@0.1.0
+npm install --global electron-benchmarks
 electron-benchmarks --help
 ```
 
@@ -135,6 +122,19 @@ electron-benchmarks startup --electron 40.0.0 --out .\results\startup-check
 
 运行中按 `Ctrl+C`，或创建结果目录下的 `detail/STOP` 文件，可停止当前测试。
 
+### 结果示例
+
+终端显示进度与简短摘要，同时输出供脚本或 Agent 读取的 JSON 结果。以下为两个版本热启动对比的摘要示意，数值仅用于展示，不代表实际性能：
+
+```text
+complete: 40/40 valid formal samples; 0 failed, 0 unexecuted
+warm target-1 appReadyMs: P50=120.000 ms
+warm target-2 appReadyMs: P50=114.000 ms; delta=-5.00%
+Summary: C:\benchmarks\startup-comparison\summary.json
+```
+
+`target-1`、`target-2` 对应输入顺序，第一个目标为基准。此例中，第二个目标的启动时间 P50 比基准低 5%。
+
 ## 测量说明
 
 ### 指标含义
@@ -161,6 +161,7 @@ electron-benchmarks startup --electron 40.0.0 --out .\results\startup-check
 
 ## 文档
 
+- [版本变更记录](CHANGELOG.md)
 - [用户指南](docs/USER-GUIDE.zh-CN.md)：参数边界、停止测试、结果读取与退出码。
 - [配置参考](docs/config.schema.json)：JSON 配置字段与约束。
 - [输出格式](docs/output.schema.json)与[样本格式](docs/sample.schema.json)：结构化结果定义。

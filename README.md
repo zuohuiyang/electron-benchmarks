@@ -11,19 +11,6 @@ Electron Benchmarks helps developers assess Electron performance and validate op
 - **Statistics and review**: Run warmups and repeated measurements, report P50/P90, and retain environment information and individual samples.
 - **Agent-friendly interface**: Use JSON configuration and results with explicit status, errors, and data completeness information.
 
-## Example results
-
-The terminal shows progress and a short summary, alongside JSON results for scripts and agents. The following illustrates a warm-startup comparison between two versions. The numbers are examples, not actual measurements:
-
-```text
-complete: 40/40 valid formal samples; 0 failed, 0 unexecuted
-warm target-1 appReadyMs: P50=120.000 ms
-warm target-2 appReadyMs: P50=114.000 ms; delta=-5.00%
-Summary: C:\benchmarks\startup-comparison\summary.json
-```
-
-`target-1` and `target-2` follow the input order; the first target is the baseline. In this example, the second target's P50 startup time is 5% lower than the baseline.
-
 ## Installation
 
 Requirements:
@@ -33,7 +20,7 @@ Requirements:
 - Electron >=22 for the versions being tested.
 
 ```powershell
-npm install --global electron-benchmarks@0.1.0
+npm install --global electron-benchmarks
 electron-benchmarks --help
 ```
 
@@ -135,6 +122,19 @@ For AI agents and scripts, stdout contains one JSON result or error object; prog
 
 Press `Ctrl+C` or create a `detail/STOP` file in the result directory to stop the current test.
 
+### Example results
+
+The terminal shows progress and a short summary, alongside JSON results for scripts and agents. The following illustrates a warm-startup comparison between two versions. The numbers are examples, not actual measurements:
+
+```text
+complete: 40/40 valid formal samples; 0 failed, 0 unexecuted
+warm target-1 appReadyMs: P50=120.000 ms
+warm target-2 appReadyMs: P50=114.000 ms; delta=-5.00%
+Summary: C:\benchmarks\startup-comparison\summary.json
+```
+
+`target-1` and `target-2` follow the input order; the first target is the baseline. In this example, the second target's P50 startup time is 5% lower than the baseline.
+
 ## Measurement notes
 
 ### Metrics
@@ -161,6 +161,7 @@ Version 0.2.1 supports cold startup, warm startup, idle memory, and idle CPU on 
 
 ## Documentation
 
+- [Changelog](CHANGELOG.md)
 The prose guides below are currently in Chinese.
 
 - [User guide](docs/USER-GUIDE.zh-CN.md): Parameter constraints, stopping tests, reading results, and exit codes.
